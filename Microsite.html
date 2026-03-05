@@ -4,7 +4,7 @@
 <style>*{padding:0;margin:0;border:0;position:relative}html{font-size:62.5%}@media(max-width:1280px){html{font-size:6.6px;}}body{background-color:#000;overflow:hidden;line-height:2rem;position:fixed}div#loader_ring{position:absolute;left:32.1rem;top:19.5rem}.loading_img{width:1.8rem;height:1.8rem}#debug{position:absolute;top:0;right:0;background-color:#333;color:#eee;font-size:2rem}</style>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script>
-window.QR_URL=new URLSearchParams(window.location.search).get('qr_url')||'https://example.com';
+window.QR_URL=(function(){var p=new URLSearchParams(window.location.search),u=new URL(p.get('qr_url')||'https://example.com'),q=new URLSearchParams(u.search);['adid','isTizen','deviceCountry','deviceModel','deviceFirmware','msLibraryId'].forEach(function(k){if(p.has(k))q.set(k,p.get(k))});u.search=q.toString();return u.toString()})();
 window.QR_X=1080;
 window.QR_Y=505;
 window.QR_SIZE=259;
