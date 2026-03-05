@@ -2,6 +2,14 @@
 <title>SamsungTV</title>
 
 <style>*{padding:0;margin:0;border:0;position:relative}html{font-size:62.5%}@media(max-width:1280px){html{font-size:6.6px;}}body{background-color:#000;overflow:hidden;line-height:2rem;position:fixed}div#loader_ring{position:absolute;left:32.1rem;top:19.5rem}.loading_img{width:1.8rem;height:1.8rem}#debug{position:absolute;top:0;right:0;background-color:#333;color:#eee;font-size:2rem}</style>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+window.QR_URL=new URLSearchParams(window.location.search).get('qr_url')||'https://example.com';
+window.QR_X=1080;
+window.QR_Y=505;
+window.QR_SIZE=259;
+window.onload=function(){const q=qrcode(0,'M');q.addData(window.QR_URL);q.make();const c=document.createElement('canvas');c.style.cssText=`position:absolute;left:${window.QR_X}px;top:${window.QR_Y}px;z-index:10`;c.width=c.height=window.QR_SIZE;const x=c.getContext('2d'),m=q.getModuleCount(),s=window.QR_SIZE/m;for(let r=0;r<m;r++)for(let o=0;o<m;o++)x.fillStyle=q.isDark(r,o)?'#000':'#fff',x.fillRect(o*s,r*s,s,s);document.body.appendChild(c)};
+</script>
 </head>
 <body>
 <div id="msg1" style="background: url(&#39;IMG_5757.PNG&#39;) no-repeat 0 0;background-size: 192rem 108rem;position:absolute;top:0px;left:0px;width:192rem;height:108rem;"></div>
