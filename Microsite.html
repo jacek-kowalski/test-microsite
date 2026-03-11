@@ -13,7 +13,12 @@ window.onload=function(){const q=qrcode(0,'M');q.addData(window.QR_URL);q.make()
 </script>
 </head>
 <body>
-<div id="msg1" style="background: url(&#39;IMG_5757.PNG&#39;) no-repeat 0 0;background-size: 192rem 108rem;position:absolute;top:0px;left:0px;width:192rem;height:108rem;"></div>
+<div id="msg1" style="background: url(&#39;IMG_5757.PNG&#39;) no-repeat 0 0;background-size: 192rem 108rem;position:absolute;top:0px;left:0px;width:192rem;height:108rem;">
+    <div style="position: absolute; top: 20px; left: 20px; z-index: 20;">
+        <a href="SamsungCheckout/GeneralSampleApp/SamsungCheckout/index.html" style="display: inline-block; margin: 10px; padding: 15px 25px; background-color: #16a7a7; color: white; text-decoration: none; font-size: 20px; border-radius: 5px;">General Sample App</a>
+        <a href="SamsungCheckout/SubscriptionSampleApp/CheckoutMovie/index.html" style="display: inline-block; margin: 10px; padding: 15px 25px; background-color: #16a7a7; color: white; text-decoration: none; font-size: 20px; border-radius: 5px;">Subscription Sample App</a>
+    </div>
+</div>
 <div id="locationPopup"></div>
 <script>
 document.getElementById('locationPopup').textContent=JSON.stringify({
@@ -25,7 +30,8 @@ document.getElementById('locationPopup').textContent=JSON.stringify({
   port: window.location.port,
   pathname: window.location.pathname,
   search: window.location.search,
-  hash: window.location.hash
+  hash: window.location.hash,
+  samsung: window.$SAMSUNG
 }, null, 2);
 </script>
 </body></html>
