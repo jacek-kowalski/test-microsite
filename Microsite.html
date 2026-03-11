@@ -2,7 +2,7 @@
 <title>SamsungTV</title>
 
 
-<style>*{padding:0;margin:0;border:0;position:relative}html{font-size:62.5%}@media(max-width:1280px){html{font-size:6.6px;}}body{background-color:#000;overflow:hidden;line-height:2rem;position:fixed}div#loader_ring{position:absolute;left:32.1rem;top:19.5rem}.loading_img{width:1.8rem;height:1.8rem}#debug{position:absolute;top:0;right:0;background-color:#333;color:#eee;font-size:2rem}</style>
+<style>*{padding:0;margin:0;border:0;position:relative}html{font-size:62.5%}@media(max-width:1280px){html{font-size:6.6px;}}body{background-color:#000;overflow:hidden;line-height:2rem;position:fixed}div#loader_ring{position:absolute;left:32.1rem;top:19.5rem}.loading_img{width:1.8rem;height:1.8rem}#debug{position:absolute;top:0;right:0;background-color:#333;color:#eee;font-size:2rem}#locationPopup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:20px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.5);color:#000;font-family:monospace;font-size:14px;max-width:600px;z-index:1000;white-space:pre-wrap;word-break:break-all}</style>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script>
 window.QR_URL=(function(){var p=new URLSearchParams(window.location.search),u=new URL(p.get('qr_url')||'https://example.com'),q=new URLSearchParams(u.search);['adid','isTizen','deviceCountry','deviceModel','deviceFirmware','msLibraryId'].forEach(function(k){if(p.has(k))q.set(k,p.get(k))});u.search=q.toString();return u.toString()})();
@@ -14,4 +14,18 @@ window.onload=function(){const q=qrcode(0,'M');q.addData(window.QR_URL);q.make()
 </head>
 <body>
 <div id="msg1" style="background: url(&#39;IMG_5757.PNG&#39;) no-repeat 0 0;background-size: 192rem 108rem;position:absolute;top:0px;left:0px;width:192rem;height:108rem;"></div>
+<div id="locationPopup"></div>
+<script>
+document.getElementById('locationPopup').textContent=JSON.stringify({
+  href: window.location.href,
+  origin: window.location.origin,
+  protocol: window.location.protocol,
+  host: window.location.host,
+  hostname: window.location.hostname,
+  port: window.location.port,
+  pathname: window.location.pathname,
+  search: window.location.search,
+  hash: window.location.hash
+}, null, 2);
+</script>
 </body></html>
