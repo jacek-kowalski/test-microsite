@@ -2,36 +2,36 @@
 <title>SamsungTV</title>
 
 
-<style>*{padding:0;margin:0;border:0;position:relative}html{font-size:62.5%}@media(max-width:1280px){html{font-size:6.6px;}}body{background-color:#000;overflow:hidden;line-height:2rem;position:fixed}div#loader_ring{position:absolute;left:32.1rem;top:19.5rem}.loading_img{width:1.8rem;height:1.8rem}#debug{position:absolute;top:0;right:0;background-color:#333;color:#eee;font-size:2rem}#locationPopup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:20px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.5);color:#000;font-family:monospace;font-size:14px;max-width:600px;z-index:1000;white-space:pre-wrap;word-break:break-all}</style>
+<style>*{padding:0;margin:0;border:0;position:relative}html{font-size:62.5%}@media(max-width:1280px){html{font-size:6.6px;}}body{background-color:#000;overflow:hidden;line-height:2rem;position:fixed}div#loader_ring{position:absolute;left:32.1rem;top:19.5rem}.loading_img{width:1.8rem;height:1.8rem}#debug{position:absolute;top:0;right:0;background-color:#333;color:#eee;font-size:2rem}</style>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script>
 window.QR_URL=(function(){var p=new URLSearchParams(window.location.search),u=new URL(p.get('qr_url')||'https://example.com'),q=new URLSearchParams(u.search);['adid','isTizen','deviceCountry','deviceModel','deviceFirmware','msLibraryId'].forEach(function(k){if(p.has(k))q.set(k,p.get(k))});u.search=q.toString();return u.toString()})();
 window.QR_X=1080;
 window.QR_Y=505;
 window.QR_SIZE=259;
-window.onload=function(){const q=qrcode(0,'M');q.addData(window.QR_URL);q.make();const c=document.createElement('canvas');c.style.cssText=`position:absolute;left:${window.QR_X}px;top:${window.QR_Y}px;z-index:10`;c.width=c.height=window.QR_SIZE;const x=c.getContext('2d'),m=q.getModuleCount(),s=window.QR_SIZE/m;for(let r=0;r<m;r++)for(let o=0;o<m;o++)x.fillStyle=q.isDark(r,o)?'#000':'#fff',x.fillRect(o*s,r*s,s,s);document.body.appendChild(c)};
+window.onload=function(){
+    // Extract flight_id and creative_id from query string, default to "0" if missing
+    const urlParams = new URLSearchParams(window.location.search);
+    const flightId = urlParams.get('flight_id') || '0';
+    const creativeId = urlParams.get('creative_id') || '0';
+    
+    // Construct the new URL format
+    const encodedTargetUrl = encodeURIComponent(window.QR_URL);
+    const newQrUrl = `https://rtb.adgrx.com/scans?flight_id=${flightId}&creative_id=${creativeId}&target_url=${encodedTargetUrl}`;
+    
+    // Generate QR code with the new URL
+    const q=qrcode(0,'M');
+    q.addData(newQrUrl);
+    q.make();
+    const c=document.createElement('canvas');
+    c.style.cssText=`position:absolute;left:${window.QR_X}px;top:${window.QR_Y}px;z-index:10`;
+    c.width=c.height=window.QR_SIZE;
+    const x=c.getContext('2d'),m=q.getModuleCount(),s=window.QR_SIZE/m;
+    for(let r=0;r<m;r++)for(let o=0;o<m;o++)x.fillStyle=q.isDark(r,o)?'#000':'#fff',x.fillRect(o*s,r*s,s,s);
+    document.body.appendChild(c);
+};
 </script>
 </head>
 <body>
-<div id="msg1" style="background: url(&#39;IMG_5757.PNG&#39;) no-repeat 0 0;background-size: 192rem 108rem;position:absolute;top:0px;left:0px;width:192rem;height:108rem;">
-    <div style="position: absolute; top: 20px; left: 20px; z-index: 20;">
-        <a href="SamsungCheckout/GeneralSampleApp/SamsungCheckout/index.html" style="display: inline-block; margin: 10px; padding: 15px 25px; background-color: #16a7a7; color: white; text-decoration: none; font-size: 20px; border-radius: 5px;">General Sample App</a>
-        <a href="SamsungCheckout/SubscriptionSampleApp/CheckoutMovie/index.html" style="display: inline-block; margin: 10px; padding: 15px 25px; background-color: #16a7a7; color: white; text-decoration: none; font-size: 20px; border-radius: 5px;">Subscription Sample App</a>
-    </div>
-</div>
-<div id="locationPopup"></div>
-<script>
-document.getElementById('locationPopup').textContent=JSON.stringify({
-  href: window.location.href,
-  origin: window.location.origin,
-  protocol: window.location.protocol,
-  host: window.location.host,
-  hostname: window.location.hostname,
-  port: window.location.port,
-  pathname: window.location.pathname,
-  search: window.location.search,
-  hash: window.location.hash,
-  samsung: window.$SAMSUNG
-}, null, 2);
-</script>
+<div id="msg1" style="background: url(&#39;IMG_5757.PNG&#39;) no-repeat 0 0;background-size: 192rem 108rem;position:absolute;top:0px;left:0px;width:192rem;height:108rem;"></div>
 </body></html>
