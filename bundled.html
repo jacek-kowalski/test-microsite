@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+    <meta http-equiv="expires" content="0"/>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Shooter - Interactive Microsite</title>
+    <style>
+        /* Space Shooter Microsite - Samsung Tizen 10 */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 1920px;
+            height: 1080px;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Courier New', monospace;
+            color: #fff;
+        }
+        #game {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 1920px;
+            height: 1080px;
+        }
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 1920px;
+            height: 1080px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #scoreDisplay {
+            position: absolute;
+            top: 20px;
+            left: 30px;
+            font-size: 28px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 8px rgba(0, 200, 255, 0.6);
+        }
+        #startOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: -webkit-box;
+            display: flex;
+            -webkit-box-orient: vertical;
+            flex-direction: column;
+            -webkit-box-align: center;
+            align-items: center;
+            -webkit-box-pack: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.7);
+        }
+        .start-title {
+            font-size: 72px;
+            letter-spacing: 12px;
+            margin-bottom: 60px;
+            text-shadow: 0 0 20px rgba(0, 200, 255, 0.8);
+            color: #00ccff;
+        }
+        .start-controls {
+            font-size: 28px;
+            letter-spacing: 4px;
+            margin-bottom: 40px;
+            display: -webkit-box;
+            display: flex;
+            gap: 60px;
+            color: #aaa;
+        }
+        .start-hint {
+            font-size: 24px;
+            letter-spacing: 3px;
+            color: #666;
+            -webkit-animation: blink 1.5s ease-in-out infinite;
+            animation: blink 1.5s ease-in-out infinite;
+        }
+        #gameOverOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: -webkit-box;
+            display: flex;
+            -webkit-box-orient: vertical;
+            flex-direction: column;
+            -webkit-box-align: center;
+            align-items: center;
+            -webkit-box-pack: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.8);
+        }
+        .gameover-title {
+            font-size: 64px;
+            letter-spacing: 8px;
+            color: #ff3333;
+            text-shadow: 0 0 20px rgba(255, 50, 50, 0.6);
+            margin-bottom: 30px;
+        }
+        .gameover-score {
+            font-size: 36px;
+            letter-spacing: 4px;
+            color: #00ccff;
+            margin-bottom: 40px;
+        }
+        .gameover-hint {
+            font-size: 22px;
+            color: #666;
+            -webkit-animation: blink 1.5s ease-in-out infinite;
+            animation: blink 1.5s ease-in-out infinite;
+        }
+        .hidden {
+            display: none !important;
+        }
+        @-webkit-keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        @media screen and (max-width: 1280px) {
+            html, body, #game, #ui {
+                width: 1280px;
+                height: 720px;
+            }
+            #game {
+                width: 1280px;
+                height: 720px;
+            }
+            .start-title { font-size: 48px; }
+            .start-controls { font-size: 20px; }
+        }
+    </style>
+</head>
+
+<body onload="window.$SAMSUNG.onLoad()" onkeydown="window.$SAMSUNG.onKeyDown(event)" onkeyup="window.$SAMSUNG.onKeyUp(event)">
+
+<canvas id="game" width="1920" height="1080"></canvas>
+
+<div id="ui">
+    <div id="scoreDisplay">SCORE: <span id="scoreValue">0</span></div>
+    <div id="startOverlay">
+        <div class="start-title">SPACE PATROL</div>
+        <div class="start-controls">
+            <span>&#9650; &#9660; FLY</span>
+            <span>OK SHOOT</span>
+        </div>
+        <div class="start-hint">PRESS OK TO START</div>
+    </div>
+    <div id="gameOverOverlay" class="hidden">
+        <div class="gameover-title">GAME OVER</div>
+        <div class="gameover-score">SCORE: <span id="finalScore">0</span></div>
+        <div class="gameover-hint">PRESS OK TO RETRY</div>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    // === Samsung TV API ===
+    window.$SAMSUNG = window.$SAMSUNG || {};
+    window.$SAMSUNG.CONSTANTS = {
+        KeyCodes: {
+            ENTER: [13, 29443],
+            RETURN: [10009, 88],
+            EXIT: [10182, 45],
+            UP: [38, 29460],
+            DOWN: [40, 29461]
+        }
+    };
+
+    var isTizen = /tizen/i.test(navigator.userAgent.toLowerCase());
+
+    window.$SAMSUNG.onLoad = function () {
+        if (isTizen) {
+            setTimeout(function () {
+                window.parent.postMessage('{"registerKey":"Return"}', '*');
+            }, 2000);
+        }
+        init();
+    };
+
+    window.$SAMSUNG.onKeyDown = function (e) {
+        var kc = e.keyCode;
+        var KC = window.$SAMSUNG.CONSTANTS.KeyCodes;
+
+        if ([37, 38, 39, 40, 13].indexOf(kc) >= 0) e.preventDefault();
+
+        if (KC.EXIT.indexOf(kc) >= 0 || KC.RETURN.indexOf(kc) >= 0) {
+            closeMicrosite();
+            return;
+        }
+        if (KC.UP.indexOf(kc) >= 0) keys.up = true;
+        if (KC.DOWN.indexOf(kc) >= 0) keys.down = true;
+        if (KC.ENTER.indexOf(kc) >= 0) keys.fire = true;
+    };
+
+    window.$SAMSUNG.onKeyUp = function (e) {
+        var kc = e.keyCode;
+        var KC = window.$SAMSUNG.CONSTANTS.KeyCodes;
+        if (KC.UP.indexOf(kc) >= 0) keys.up = false;
+        if (KC.DOWN.indexOf(kc) >= 0) keys.down = false;
+        if (KC.ENTER.indexOf(kc) >= 0) keys.fire = false;
+    };
+
+    function closeMicrosite() {
+        if (isTizen) {
+            window.parent.postMessage('{"close":""}', '*');
+        }
+    }
+
+    // === Game Constants ===
+    var W = 1920;
+    var H = 1080;
+    var PLAYER_SPEED = 8;
+    var BULLET_SPEED = 14;
+    var UFO_SPEED_MIN = 3;
+    var UFO_SPEED_MAX = 7;
+    var UFO_SPAWN_INTERVAL = 1200;
+    var STAR_COUNT = 80;
+    var FIRE_COOLDOWN = 180;
+
+    // === State ===
+    var STATE_START = 0;
+    var STATE_PLAY = 1;
+    var STATE_DEAD = 2;
+    var state = STATE_START;
+
+    var canvas, ctx;
+    var score = 0;
+    var keys = { up: false, down: false, fire: false };
+    var lastFireTime = 0;
+    var lastUfoSpawn = 0;
+
+    var player = { x: 120, y: H / 2, w: 60, h: 30 };
+    var bullets = [];
+    var ufos = [];
+    var explosions = [];
+    var stars = [];
+
+    var scoreValueEl, startOverlay, gameOverOverlay, finalScoreEl;
+
+    function init() {
+        canvas = document.getElementById('game');
+        ctx = canvas.getContext('2d');
+        canvas.width = W;
+        canvas.height = H;
+
+        scoreValueEl = document.getElementById('scoreValue');
+        startOverlay = document.getElementById('startOverlay');
+        gameOverOverlay = document.getElementById('gameOverOverlay');
+        finalScoreEl = document.getElementById('finalScore');
+
+        for (var i = 0; i < STAR_COUNT; i++) {
+            stars.push({
+                x: Math.random() * W,
+                y: Math.random() * H,
+                speed: 1 + Math.random() * 3,
+                size: Math.random() < 0.3 ? 2 : 1
+            });
+        }
+
+        loop();
+    }
+
+    function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+    }
+
+    function update() {
+        updateStars();
+
+        if (state === STATE_START) {
+            if (keys.fire) { startGame(); keys.fire = false; }
+            return;
+        }
+
+        if (state === STATE_DEAD) {
+            if (keys.fire) { restartGame(); keys.fire = false; }
+            updateExplosions();
+            return;
+        }
+
+        if (keys.up) player.y -= PLAYER_SPEED;
+        if (keys.down) player.y += PLAYER_SPEED;
+        if (player.y < 10) player.y = 10;
+        if (player.y > H - player.h - 10) player.y = H - player.h - 10;
+
+        var now = performance.now();
+        if (keys.fire && now - lastFireTime > FIRE_COOLDOWN) {
+            bullets.push({ x: player.x + player.w, y: player.y + player.h / 2 - 2, w: 20, h: 4 });
+            lastFireTime = now;
+        }
+
+        for (var i = bullets.length - 1; i >= 0; i--) {
+            bullets[i].x += BULLET_SPEED;
+            if (bullets[i].x > W + 20) bullets.splice(i, 1);
+        }
+
+        if (now - lastUfoSpawn > UFO_SPAWN_INTERVAL) {
+            spawnUfo();
+            lastUfoSpawn = now;
+        }
+
+        for (var u = ufos.length - 1; u >= 0; u--) {
+            var ufo = ufos[u];
+            ufo.x -= ufo.speed;
+            ufo.angle += 0.03;
+            ufo.y = ufo.baseY + Math.sin(ufo.angle) * 40;
+
+            if (ufo.x < -ufo.w) { ufos.splice(u, 1); continue; }
+
+            if (rectsOverlap(player, ufo)) { die(); return; }
+
+            for (var b = bullets.length - 1; b >= 0; b--) {
+                if (rectsOverlap(bullets[b], ufo)) {
+                    explosions.push({ x: ufo.x + ufo.w / 2, y: ufo.y + ufo.h / 2, t: 0 });
+                    ufos.splice(u, 1);
+                    bullets.splice(b, 1);
+                    score += 10;
+                    scoreValueEl.textContent = score;
+                    break;
+                }
+            }
+        }
+
+        updateExplosions();
+    }
+
+    function updateStars() {
+        for (var i = 0; i < stars.length; i++) {
+            stars[i].x -= stars[i].speed;
+            if (stars[i].x < 0) { stars[i].x = W; stars[i].y = Math.random() * H; }
+        }
+    }
+
+    function updateExplosions() {
+        for (var i = explosions.length - 1; i >= 0; i--) {
+            explosions[i].t += 1;
+            if (explosions[i].t > 20) explosions.splice(i, 1);
+        }
+    }
+
+    function spawnUfo() {
+        var size = 40 + Math.random() * 30;
+        var y = 50 + Math.random() * (H - 150);
+        ufos.push({ x: W + 10, y: y, baseY: y, w: size, h: size * 0.5, speed: UFO_SPEED_MIN + Math.random() * (UFO_SPEED_MAX - UFO_SPEED_MIN), angle: Math.random() * Math.PI * 2 });
+    }
+
+    function startGame() {
+        state = STATE_PLAY;
+        score = 0;
+        scoreValueEl.textContent = '0';
+        player.y = H / 2;
+        bullets = [];
+        ufos = [];
+        explosions = [];
+        lastUfoSpawn = performance.now();
+        startOverlay.classList.add('hidden');
+        gameOverOverlay.classList.add('hidden');
+    }
+
+    function die() {
+        state = STATE_DEAD;
+        explosions.push({ x: player.x + player.w / 2, y: player.y + player.h / 2, t: 0 });
+        finalScoreEl.textContent = score;
+        gameOverOverlay.classList.remove('hidden');
+    }
+
+    function restartGame() { startGame(); }
+
+    function draw() {
+        ctx.fillStyle = '#0a0a1a';
+        ctx.fillRect(0, 0, W, H);
+        drawStars();
+        if (state === STATE_PLAY || state === STATE_DEAD) {
+            drawBullets();
+            drawUfos();
+            drawExplosions();
+            if (state === STATE_PLAY) drawPlayer();
+        }
+    }
+
+    function drawStars() {
+        ctx.fillStyle = '#ffffff';
+        for (var i = 0; i < stars.length; i++) {
+            var s = stars[i];
+            ctx.globalAlpha = 0.3 + (s.speed / 4) * 0.7;
+            ctx.fillRect(s.x, s.y, s.size, s.size);
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    function drawPlayer() {
+        var x = player.x, y = player.y, w = player.w, h = player.h;
+        ctx.fillStyle = '#00ccff';
+        ctx.beginPath();
+        ctx.moveTo(x + w, y + h / 2);
+        ctx.lineTo(x + 10, y);
+        ctx.lineTo(x, y + h * 0.3);
+        ctx.lineTo(x + 5, y + h / 2);
+        ctx.lineTo(x, y + h * 0.7);
+        ctx.lineTo(x + 10, y + h);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#ff6600';
+        ctx.fillRect(x - 8, y + h * 0.35, 10, h * 0.3);
+        ctx.fillStyle = '#ffcc00';
+        ctx.fillRect(x - 4, y + h * 0.4, 6, h * 0.2);
+    }
+
+    function drawBullets() {
+        ctx.fillStyle = '#ffff00';
+        ctx.shadowColor = '#ffff00';
+        ctx.shadowBlur = 6;
+        for (var i = 0; i < bullets.length; i++) {
+            var b = bullets[i];
+            ctx.fillRect(b.x, b.y, b.w, b.h);
+        }
+        ctx.shadowBlur = 0;
+    }
+
+    function drawUfos() {
+        for (var i = 0; i < ufos.length; i++) {
+            var u = ufos[i];
+            ctx.fillStyle = '#88ff88';
+            ctx.beginPath();
+            ctx.ellipse(u.x + u.w / 2, u.y + u.h * 0.6, u.w / 2, u.h * 0.3, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#44cc44';
+            ctx.beginPath();
+            ctx.ellipse(u.x + u.w / 2, u.y + u.h * 0.4, u.w * 0.3, u.h * 0.4, 0, Math.PI, 0);
+            ctx.fill();
+            ctx.fillStyle = '#ffff66';
+            for (var j = 0; j < 3; j++) {
+                var lx = u.x + u.w * 0.25 + (u.w * 0.5 / 2) * j;
+                ctx.beginPath();
+                ctx.arc(lx, u.y + u.h * 0.6, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+    }
+
+    function drawExplosions() {
+        for (var i = 0; i < explosions.length; i++) {
+            var ex = explosions[i];
+            var progress = ex.t / 20;
+            var radius = 10 + progress * 40;
+            ctx.globalAlpha = 1 - progress;
+            ctx.fillStyle = '#ff6600';
+            ctx.beginPath();
+            ctx.arc(ex.x, ex.y, radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#ffff00';
+            ctx.beginPath();
+            ctx.arc(ex.x, ex.y, radius * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    function rectsOverlap(a, b) {
+        return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+})();
+</script>
+</body>
+</html>
