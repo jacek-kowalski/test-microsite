@@ -1230,7 +1230,7 @@ function make_gl_texture(texture_id,
     gl.activeTexture(gl.TEXTURE0 + texture_id);
     gl.bindTexture(gl.TEXTURE_2D, texture);
 
-    gl.texImage2D(gl.TEXTURE_2D, 0, texture_types?gl.RG32F:gl.RGBA32F,
+    gl.texImage2D(gl.TEXTURE_2D, 0, texture_types?gl.RG16F:gl.RGBA16F,
                   H, W, 0,
                   texture_types?gl.RG:gl.RGBA, gl.FLOAT, data);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -1309,7 +1309,9 @@ function make_texture(arr) {
 
 function setup_graphics() {
     gl.getExtension("EXT_color_buffer_float");
+    gl.getExtension("EXT_color_buffer_half_float");
     gl.getExtension("OES_texture_float_linear");
+    gl.getExtension("OES_texture_half_float_linear");
 
 /*
 var fragmentShaderSource = fragmentShaderHeader + `//SHADER
