@@ -1233,6 +1233,10 @@ function make_gl_texture(texture_id,
     gl.texImage2D(gl.TEXTURE_2D, 0, texture_types?gl.RG32F:gl.RGBA32F,
                   H, W, 0,
                   texture_types?gl.RG:gl.RGBA, gl.FLOAT, data);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return texture;
 }
 
@@ -1296,9 +1300,10 @@ class Light {
 var all_textures = [];
 function make_texture(arr) {
     all_textures.push(make_gl_texture(10, 0, 256, 256, new Float32Array(arr)));
-    gl.generateMipmap(gl.TEXTURE_2D);
-    
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); 
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); 
 }
 
 
@@ -2915,7 +2920,7 @@ function game_step(now) {
 
     // Fall or rise up or down to be at ground level
     var fall_rate = map.get_floor_height(camera.position)+10-camera.position.z;
-    camera.position.z += clamp(fall_rate*dt/30,-2,3);
+    if (fall_rate > 0 && fall_rate < 12) { camera.position.z = map.get_floor_height(camera.position)+10; } else { camera.position.z += clamp(fall_rate*dt/30,-2,3); }
     // Shake the camera if we fall fast
     camera_shake = clamp(camera_shake-fall_rate*.15*(fall_rate<0)-.1, 0, 4);
 
