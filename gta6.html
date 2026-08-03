@@ -307,12 +307,43 @@
         border-radius: 12px;
         overflow: hidden;
         box-shadow: 0 14px 40px rgba(0,0,0,.55);
+        transform: scale(1);
+        transition: transform .15s ease, box-shadow .15s ease;
     }
     .screenshot-tile img {
         width: 100%;
         height: 100%;
         object-fit: cover;
         display: block;
+    }
+    /* TV-remote focus ring — the only focusable component on this page */
+    .screenshot-tile.is-focused {
+        outline: 5px solid #fff;
+        outline-offset: 3px;
+        transform: scale(1.06);
+        box-shadow: 0 18px 50px rgba(0,0,0,.7);
+        z-index: 1;
+    }
+
+    /* ===== Fullscreen screenshot viewer ===== */
+    #screenshotFullscreen {
+        position: absolute;
+        inset: 0;
+        background: rgba(0,0,0,.92);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 50;
+    }
+    #screenshotFullscreen.is-open {
+        display: flex;
+    }
+    #screenshotFullscreen img {
+        max-width: 88%;
+        max-height: 88%;
+        object-fit: contain;
+        border-radius: 8px;
+        box-shadow: 0 30px 90px rgba(0,0,0,.7);
     }
 
     /* ===== Spec strip ===== */
@@ -431,11 +462,15 @@
     <div id="screenshotRailWrap">
         <div class="rail-eyebrow">screenshots</div>
         <div id="screenshotRail">
-            <div class="screenshot-tile"><img src="assets/screenshot-1.jpg" alt="Screenshot 1"></div>
-            <div class="screenshot-tile"><img src="assets/screenshot-2.jpg" alt="Screenshot 2"></div>
-            <div class="screenshot-tile"><img src="assets/screenshot-3.jpg" alt="Screenshot 3"></div>
-            <div class="screenshot-tile"><img src="assets/screenshot-4.jpg" alt="Screenshot 4"></div>
+            <div class="screenshot-tile" data-index="0"><img src="assets/screenshot-1.jpg" alt="Screenshot 1"></div>
+            <div class="screenshot-tile" data-index="1"><img src="assets/screenshot-2.jpg" alt="Screenshot 2"></div>
+            <div class="screenshot-tile" data-index="2"><img src="assets/screenshot-3.jpg" alt="Screenshot 3"></div>
+            <div class="screenshot-tile" data-index="3"><img src="assets/screenshot-4.jpg" alt="Screenshot 4"></div>
         </div>
+    </div>
+
+    <div id="screenshotFullscreen">
+        <img id="screenshotFullscreenImg" src="" alt="Screenshot fullscreen">
     </div>
 
     <div id="specStrip">
@@ -503,7 +538,14 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
     var KeyCodes = {
         ENTER: [13, 29443],
         RETURN: [10009, 88],   // 88 = X key, desktop testing
-        EXIT: [10182, 45]
+        EXIT: [10182, 45],
+        // Tizen fires plain arrow keyCodes (37/38/39/40) for the D-pad on
+        // most remotes; UP/DOWN also have Samsung-specific aliases (see
+        // immersive_doom's patch_for_tv.py for the same 29460/29461 pair).
+        LEFT: [37],
+        RIGHT: [39],
+        UP: [38, 29460],
+        DOWN: [40, 29461]
     };
 
     var isTizen = /tizen/i.test(navigator.userAgent.toLowerCase());
@@ -578,6 +620,59 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
         }
     }
 
+    // ── Screenshot rail: the only focusable component on this page.
+    // LEFT/RIGHT moves focus between tiles (starts on the leftmost tile).
+    // OK opens the focused screenshot fullscreen; OK again closes it. ──
+    var screenshotTiles = [];
+    var focusedIndex = 0;
+    var isFullscreenOpen = false;
+
+    function setFocusedTile(index) {
+        var i;
+        focusedIndex = index;
+        for (i = 0; i < screenshotTiles.length; i++) {
+            if (i === focusedIndex) {
+                screenshotTiles[i].classList.add('is-focused');
+            } else {
+                screenshotTiles[i].classList.remove('is-focused');
+            }
+        }
+    }
+
+    function moveFocus(delta) {
+        if (!screenshotTiles.length) { return; }
+        var next = focusedIndex + delta;
+        if (next < 0) { next = 0; }
+        if (next > screenshotTiles.length - 1) { next = screenshotTiles.length - 1; }
+        setFocusedTile(next);
+    }
+
+    function openFullscreen(index) {
+        var tile = screenshotTiles[index];
+        if (!tile) { return; }
+        var img = tile.querySelector('img');
+        var fsImg = document.getElementById('screenshotFullscreenImg');
+        fsImg.src = img.src;
+        fsImg.alt = img.alt;
+        document.getElementById('screenshotFullscreen').classList.add('is-open');
+        isFullscreenOpen = true;
+    }
+
+    function closeFullscreen() {
+        document.getElementById('screenshotFullscreen').classList.remove('is-open');
+        isFullscreenOpen = false;
+    }
+
+    function initScreenshotRail() {
+        var tiles = document.querySelectorAll('.screenshot-tile');
+        var i;
+        screenshotTiles = [];
+        for (i = 0; i < tiles.length; i++) {
+            screenshotTiles.push(tiles[i]);
+        }
+        setFocusedTile(0);
+    }
+
     function closeMicrosite(exitRoute) {
         logEvent('Closing microsite: ' + exitRoute);
         if (isTizen) {
@@ -591,20 +686,43 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
         var keyCode = event.keyCode;
 
         if (KeyCodes.EXIT.indexOf(keyCode) >= 0) {
+            if (isFullscreenOpen) { closeFullscreen(); return; }
             closeMicrosite('remoteExitButton');
             return;
         }
         if (KeyCodes.RETURN.indexOf(keyCode) >= 0) {
+            if (isFullscreenOpen) { closeFullscreen(); return; }
             closeMicrosite('remoteReturnButton');
             return;
         }
-        // No focusable tiles on this page — ENTER/OK is a no-op.
+        if (KeyCodes.ENTER.indexOf(keyCode) >= 0) {
+            if (isFullscreenOpen) {
+                closeFullscreen();
+            } else {
+                openFullscreen(focusedIndex);
+            }
+            return;
+        }
+        if (isFullscreenOpen) {
+            // While the fullscreen viewer is open, only OK/RETURN/EXIT do
+            // anything (all handled above) — arrows are ignored.
+            return;
+        }
+        if (KeyCodes.LEFT.indexOf(keyCode) >= 0) {
+            moveFocus(-1);
+            return;
+        }
+        if (KeyCodes.RIGHT.indexOf(keyCode) >= 0) {
+            moveFocus(1);
+            return;
+        }
     }
 
     function onLoad() {
         logEvent('Microsite loading. Platform: ' + (isTizen ? 'Tizen' : 'Browser'));
 
         renderQrCode(document.getElementById('qrCode'));
+        initScreenshotRail();
 
         if (isTizen) {
             setTimeout(function () {
