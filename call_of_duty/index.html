@@ -581,18 +581,16 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
     //                              so this variant still works with only one
     //                              URL supplied)
     //   adid                     — CAMPAIGN_ID-FLIGHT_ID-CREATIVE_ID[-CREATIVE_ID]
-    //   direct_qr                — when present/truthy, the QR encodes
-    //                              qr_url/qr_url_2 directly instead of
-    //                              wrapping it in the rtb.adgrx.com
-    //                              tracking-relay URL (no scan logging).
-    // By default the code encodes a tracking-relay URL (rtb.adgrx.com/scans)
-    // that logs the scan then redirects to target_url, same as the
-    // reference template.
-    function isDirectQr() {
+    //   direct_qr=0               — by default the QR encodes qr_url/qr_url_2
+    //                              directly (no scan logging). Passing
+    //                              direct_qr=0 opts back into wrapping the
+    //                              destination in the rtb.adgrx.com
+    //                              tracking-relay URL, matching the
+    //                              reference template's scan-logging
+    //                              behavior.
+    function shouldWrapQr() {
         var p = new URLSearchParams(window.location.search);
-        if (!p.has('direct_qr')) { return false; }
-        var v = (p.get('direct_qr') || '').toLowerCase();
-        return v !== '0' && v !== 'false';
+        return p.get('direct_qr') === '0';
     }
 
     function getRawTargetUrl(editionIdx) {
@@ -634,17 +632,17 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
         try {
             var targetUrl = buildQrTargetUrl(editionIdx);
             var qrUrl;
-            if (isDirectQr()) {
-                // Skip the tracking-relay wrapper — encode the destination
-                // URL (with its adid/passthrough params already merged by
-                // buildQrTargetUrl) directly. No scan logging happens.
-                qrUrl = targetUrl;
-            } else {
+            if (shouldWrapQr()) {
                 var urlParams = new URLSearchParams(window.location.search);
                 var adidParts = parseAdid(urlParams.get('adid'));
                 qrUrl = 'https://rtb.adgrx.com/scans?flight_id=' + adidParts.flightId +
                     '&creative_id=' + adidParts.creativeId +
                     '&target_url=' + encodeURIComponent(targetUrl);
+            } else {
+                // Default: encode the destination URL (with its
+                // adid/passthrough params already merged by
+                // buildQrTargetUrl) directly. No scan logging happens.
+                qrUrl = targetUrl;
             }
 
             var q = qrcode(0, 'L');
