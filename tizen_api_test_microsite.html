@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+    <meta http-equiv="expires" content="0"/>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tizen Web API Probe &mdash; SSO / Samsung Account / AdInfo</title>
+    <style>
+        /* Note: TVs do not take 'const' or 'let' in JS, and prefer prefixed flexbox in CSS. */
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #0b0e14;
+            color: #e6e6e6;
+            font-family: "Samsung One", Arial, Helvetica, sans-serif;
+            font-size: 20px;
+            line-height: 1.4;
+        }
+
+        /* 5% overscan safe area so nothing is cut off on real TV panels */
+        #safe {
+            padding: 4% 5%;
+        }
+
+        h1 {
+            margin: 0 0 6px 0;
+            font-size: 34px;
+            color: #ffffff;
+        }
+
+        .subtitle {
+            margin: 0 0 22px 0;
+            font-size: 17px;
+            color: #8a93a6;
+        }
+
+        h2 {
+            margin: 30px 0 10px 0;
+            font-size: 25px;
+            color: #7fd1ff;
+            border-bottom: 2px solid #223;
+            padding-bottom: 6px;
+        }
+
+        h2 .privilege {
+            display: block;
+            font-size: 14px;
+            color: #6b7488;
+            font-weight: normal;
+            margin-top: 4px;
+        }
+
+        /* One probe = code on the left, result on the right */
+        .test {
+            border: 1px solid #222836;
+            border-left: 5px solid #3a4358;
+            background: #11151f;
+            margin-bottom: 10px;
+            padding: 10px 14px;
+        }
+
+        .test.ok      { border-left-color: #3ddc84; }
+        .test.blocked { border-left-color: #ff9f43; }
+        .test.missing { border-left-color: #6b7488; }
+        .test.error   { border-left-color: #ff5c5c; }
+        .test.pending { border-left-color: #7fd1ff; }
+
+        .test-head {
+            display: -webkit-flex;
+            display: flex;
+            -webkit-justify-content: space-between;
+            justify-content: space-between;
+            -webkit-align-items: baseline;
+            align-items: baseline;
+        }
+
+        .test-name {
+            font-size: 19px;
+            color: #ffffff;
+        }
+
+        .badge {
+            font-size: 14px;
+            font-weight: bold;
+            padding: 2px 10px;
+            border-radius: 3px;
+            white-space: nowrap;
+            margin-left: 12px;
+        }
+
+        .badge.ok      { background: #14562f; color: #6cf3a5; }
+        .badge.blocked { background: #5c3a0d; color: #ffc078; }
+        .badge.missing { background: #2a2f3d; color: #9aa3b5; }
+        .badge.error   { background: #5c1616; color: #ff9a9a; }
+        .badge.pending { background: #143a5c; color: #8ed6ff; }
+
+        code, pre {
+            font-family: Consolas, "Courier New", monospace;
+        }
+
+        pre.code {
+            margin: 8px 0 0 0;
+            padding: 8px 10px;
+            background: #060810;
+            border: 1px solid #1c2130;
+            color: #b8c7ff;
+            font-size: 16px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        pre.result {
+            margin: 6px 0 0 0;
+            padding: 8px 10px;
+            background: #060810;
+            border: 1px solid #1c2130;
+            color: #f0e68c;
+            font-size: 16px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .result-label {
+            font-size: 13px;
+            color: #6b7488;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 8px;
+        }
+
+        /* Focusable action buttons for interactive (UI-opening) probes */
+        .action {
+            display: inline-block;
+            margin: 8px 8px 0 0;
+            padding: 10px 18px;
+            font-size: 18px;
+            background: #1d2433;
+            color: #cfe3ff;
+            border: 2px solid #33405a;
+            cursor: pointer;
+        }
+
+        .action:focus {
+            outline: none;
+            background: #2b6cb0;
+            border-color: #7fd1ff;
+            color: #ffffff;
+        }
+
+        #summary {
+            border: 1px solid #222836;
+            background: #11151f;
+            padding: 14px 18px;
+            margin-bottom: 10px;
+        }
+
+        #summary .row {
+            font-size: 18px;
+            padding: 3px 0;
+        }
+
+        #summary .k {
+            display: inline-block;
+            min-width: 300px;
+            color: #8a93a6;
+        }
+
+        #summary .v {
+            color: #ffffff;
+            word-break: break-all;
+        }
+
+        .verdict {
+            margin: 18px 0 0 0;
+            padding: 14px 18px;
+            font-size: 20px;
+            border: 2px solid #33405a;
+            background: #141a26;
+            color: #ffffff;
+        }
+
+        footer {
+            margin-top: 34px;
+            padding-top: 14px;
+            border-top: 1px solid #222836;
+            font-size: 15px;
+            color: #6b7488;
+        }
+
+        footer .legend span {
+            margin-right: 20px;
+        }
+    </style>
+</head>
+
+<body id="pageBody">
+<div id="safe">
+
+    <h1>Tizen Web API Probe</h1>
+    <p class="subtitle">
+        Tests whether this runtime can reach the Samsung <strong>SSO</strong>, <strong>AdInfo</strong> and
+        <strong>ProductInfo</strong> product APIs. Each probe shows the exact vanilla JavaScript executed and its
+        real return value or thrown exception.
+    </p>
+
+    <h2>Runtime environment</h2>
+    <div id="summary"></div>
+    <div id="verdict" class="verdict">Running probes&hellip;</div>
+
+    <div id="results"></div>
+
+    <h2>Machine-readable dump</h2>
+    <p class="subtitle">Full results as JSON &mdash; photograph this, or read it from the remote debugger console.</p>
+    <pre class="code" id="jsonDump">&nbsp;</pre>
+
+    <footer>
+        <div class="legend">
+            <span style="color:#6cf3a5">OK &mdash; returned a value</span>
+            <span style="color:#ffc078">BLOCKED &mdash; API exists, privilege denied</span>
+            <span style="color:#9aa3b5">MISSING &mdash; namespace not injected</span>
+            <span style="color:#ff9a9a">ERROR &mdash; threw unexpectedly</span>
+        </div>
+        <div style="margin-top:8px">
+            Remote: <strong>&uarr;/&darr;</strong> scroll &nbsp;|&nbsp;
+            <strong>&larr;/&rarr;</strong> move between buttons &nbsp;|&nbsp;
+            <strong>Enter</strong> activate &nbsp;|&nbsp;
+            <strong>Return</strong> re-run all probes
+        </div>
+    </footer>
+
+</div>
+
+<script>
+    /**
+     * Tizen / Samsung Smart TV Web API probe.
+     *
+     * ES5 only on purpose: 2015-2017 Tizen TVs run old Chromium and will throw a
+     * SyntaxError on const/let/arrow functions, which would blank the whole page.
+     */
+    (function () {
+        'use strict';
+
+        var STATUS_OK      = 'ok';
+        var STATUS_BLOCKED = 'blocked';
+        var STATUS_MISSING = 'missing';
+        var STATUS_ERROR   = 'error';
+        var STATUS_PENDING = 'pending';
+
+        var resultsEl = document.getElementById('results');
+        var summaryEl = document.getElementById('summary');
+        var verdictEl = document.getElementById('verdict');
+        var jsonEl    = document.getElementById('jsonDump');
+
+        var collected = [];   // flat list of every probe outcome, for the JSON dump
+
+        /* ------------------------------------------------------------------ */
+        /* helpers                                                             */
+        /* ------------------------------------------------------------------ */
+
+        /**
+         * Walk a dotted path off window without throwing.
+         * probe('webapis.sso.getLoginUid') -> the function, or undefined.
+         */
+        function probe(path) {
+            var parts = path.split('.');
+            var cur = window;
+            var i;
+
+            for (i = 0; i < parts.length; i++) {
+                if (cur === null || cur === undefined) {
+                    return undefined;
+                }
+                try {
+                    cur = cur[parts[i]];
+                } catch (e) {
+                    return undefined;
+                }
+            }
+            return cur;
+        }
+
+        /** Render any value as readable text, including exotic host objects. */
+        function stringify(value) {
+            if (value === undefined) { return 'undefined'; }
+            if (value === null)      { return 'null'; }
+            if (typeof value === 'string')  { return value === '' ? '"" (empty string)' : '"' + value + '"'; }
+            if (typeof value === 'boolean') { return String(value); }
+            if (typeof value === 'number')  { return String(value); }
+            if (typeof value === 'function') { return '[function]'; }
+
+            try {
+                var json = JSON.stringify(value, null, 2);
+                // Host objects often serialise to '{}' - fall back to enumerating keys.
+                if (json === '{}' || json === undefined) {
+                    var keys = [];
+                    for (var k in value) { keys.push(k); }
+                    return keys.length
+                        ? String(value) + ' { keys: ' + keys.join(', ') + ' }'
+                        : String(value);
+                }
+                return json;
+            } catch (e) {
+                return String(value);
+            }
+        }
+
+        /** Turn a caught exception into a diagnostic status + message. */
+        function classifyError(e) {
+            var name = (e && e.name) ? e.name : 'Error';
+            var msg  = (e && e.message) ? e.message : String(e);
+            var code = (e && typeof e.code !== 'undefined') ? (' code=' + e.code) : '';
+
+            // SecurityError is the meaningful one: the API is present but this
+            // origin/container was not granted the privilege. NotFoundError comes
+            // from our own guards when a namespace was never injected at all.
+            var status = STATUS_ERROR;
+
+            if (name === 'SecurityError' || name === 'NotPermittedError') {
+                status = STATUS_BLOCKED;
+            } else if (name === 'NotFoundError' || name === 'NotSupportedError') {
+                status = STATUS_MISSING;
+            }
+
+            return {
+                status: status,
+                text: name + ': ' + msg + code
+            };
+        }
+
+        /**
+         * Build one probe card in the DOM. Returns handles so async probes can
+         * fill in their result later.
+         */
+        function card(name, code) {
+            var wrap = document.createElement('div');
+            wrap.className = 'test pending';
+
+            var head = document.createElement('div');
+            head.className = 'test-head';
+
+            var nameEl = document.createElement('div');
+            nameEl.className = 'test-name';
+            nameEl.textContent = name;
+
+            var badge = document.createElement('span');
+            badge.className = 'badge pending';
+            badge.textContent = 'PENDING';
+
+            head.appendChild(nameEl);
+            head.appendChild(badge);
+            wrap.appendChild(head);
+
+            var codeEl = document.createElement('pre');
+            codeEl.className = 'code';
+            codeEl.textContent = code;          // textContent => no HTML injection
+            wrap.appendChild(codeEl);
+
+            var label = document.createElement('div');
+            label.className = 'result-label';
+            label.textContent = 'Result';
+            wrap.appendChild(label);
+
+            var resEl = document.createElement('pre');
+            resEl.className = 'result';
+            resEl.textContent = 'waiting…';
+            wrap.appendChild(resEl);
+
+            resultsEl.appendChild(wrap);
+
+            return {
+                wrap: wrap,
+                badge: badge,
+                result: resEl,
+                /** Apply a final status + text, and record it for the JSON dump. */
+                settle: function (status, text) {
+                    wrap.className = 'test ' + status;
+                    badge.className = 'badge ' + status;
+                    badge.textContent = status.toUpperCase();
+                    resEl.textContent = text;
+
+                    var entry = { name: name, code: code, status: status, result: text };
+                    var i;
+
+                    // Re-running a button probe should update its row, not append a duplicate.
+                    for (i = 0; i < collected.length; i++) {
+                        if (collected[i].name === name) {
+                            collected[i] = entry;
+                            renderJson();
+                            return;
+                        }
+                    }
+                    collected.push(entry);
+                    renderJson();
+                }
+            };
+        }
+
+        /**
+         * Run one synchronous probe: resolve the target, call it, classify.
+         *
+         * @param name  human label
+         * @param path  dotted path of the method, e.g. 'webapis.adinfo.getTIFA'
+         * @param code  the source line to display
+         * @param args  optional argument array
+         */
+        function syncProbe(name, path, code, args) {
+            var c = card(name, code);
+            var fn = probe(path);
+
+            if (typeof fn !== 'function') {
+                // Distinguish "parent namespace absent" from "method absent".
+                var parentPath = path.split('.').slice(0, -1).join('.');
+                var parent = probe(parentPath);
+                var why = (parent === undefined || parent === null)
+                    ? 'window.' + parentPath + ' is not defined — namespace was never injected into this runtime.'
+                    : 'window.' + parentPath + ' exists, but .' + path.split('.').pop() +
+                      ' is ' + (typeof fn) + ' — method not implemented in this firmware.';
+
+                c.settle(STATUS_MISSING, why);
+                return;
+            }
+
+            try {
+                var out = fn.apply(probe(path.split('.').slice(0, -1).join('.')), args || []);
+                c.settle(STATUS_OK, stringify(out));
+            } catch (e) {
+                var info = classifyError(e);
+                c.settle(info.status, info.text);
+            }
+        }
+
+        /**
+         * A probe that evaluates an expression via a thunk (no privilege involved).
+         *
+         * @param judge optional (value) -> status. Detection probes use it so that
+         *              "typeof window.webapis === 'undefined'" is badged MISSING
+         *              rather than a misleading green OK just because the
+         *              expression itself evaluated without throwing.
+         */
+        function exprProbe(name, code, thunk, judge) {
+            var c = card(name, code);
+            try {
+                var value = thunk();
+                var status = judge ? judge(value) : STATUS_OK;
+                c.settle(status, stringify(value));
+            } catch (e) {
+                var info = classifyError(e);
+                c.settle(info.status, info.text);
+            }
+        }
+
+        /** judge: present unless the value is the string 'undefined' or falsy. */
+        function judgePresence(value) {
+            return (value === 'undefined' || value === undefined || value === null || value === '')
+                ? STATUS_MISSING
+                : STATUS_OK;
+        }
+
+        /**
+         * An async, UI-opening probe behind a button. showAccountView and
+         * showCreateAccountView take over the screen, so they must never autorun.
+         */
+        function buttonProbe(name, code, invoke) {
+            var c = card(name, code);
+            c.result.textContent = 'not run — opens a full-screen Samsung Account view; ' +
+                                   'select the button below to trigger it.';
+
+            var btn = document.createElement('div');
+            btn.className = 'action navigable';
+            btn.setAttribute('tabindex', '0');
+            btn.textContent = 'Run: ' + name;
+
+            // Enter on a focused div can arrive as both a keydown (handled globally)
+            // and a synthesised click, so guard against invoking the account view twice.
+            var running = false;
+
+            function go() {
+                if (running) { return; }
+                running = true;
+
+                c.wrap.className = 'test pending';
+                c.badge.className = 'badge pending';
+                c.badge.textContent = 'RUNNING';
+                c.result.textContent = 'invoked, awaiting callback…';
+
+                invoke(
+                    function (value) {
+                        running = false;
+                        c.settle(STATUS_OK, 'onsuccess -> ' + stringify(value));
+                    },
+                    function (err) {
+                        running = false;
+                        var info = classifyError(err);
+                        c.settle(info.status, 'onerror -> ' + info.text);
+                    },
+                    function (throwInfo) {
+                        running = false;
+                        c.settle(throwInfo.status, throwInfo.text);
+                    }
+                );
+            }
+
+            // Only onclick: the global keydown handler already routes Enter to
+            // activeElement.onclick, so a second onkeydown here would double-fire.
+            btn.onclick = go;
+
+            c.wrap.appendChild(btn);
+        }
+
+        function renderJson() {
+            var payload = {
+                capturedAt: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                url: window.location.href,
+                hasTizen: typeof window.tizen !== 'undefined',
+                hasWebapis: typeof window.webapis !== 'undefined',
+                probes: collected
+            };
+            jsonEl.textContent = JSON.stringify(payload, null, 2);
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* runtime summary                                                     */
+        /* ------------------------------------------------------------------ */
+
+        function summaryRow(key, value) {
+            var row = document.createElement('div');
+            row.className = 'row';
+
+            var k = document.createElement('span');
+            k.className = 'k';
+            k.textContent = key;
+
+            var v = document.createElement('span');
+            v.className = 'v';
+            v.textContent = value;
+
+            row.appendChild(k);
+            row.appendChild(v);
+            summaryEl.appendChild(row);
+        }
+
+        function renderSummary(webapisScript) {
+            summaryEl.innerHTML = '';
+
+            var ua = navigator.userAgent;
+            var isTizen = /tizen/i.test(ua);
+            var isOrsay = /maple/i.test(ua) && /smarttv/i.test(ua);
+
+            summaryRow('User agent', ua);
+            summaryRow('Detected platform',
+                isTizen ? 'Tizen' : (isOrsay ? 'Orsay (legacy)' : 'Not a Samsung TV runtime'));
+            summaryRow('Page URL', window.location.href);
+            summaryRow('Protocol', window.location.protocol);
+            summaryRow('In an iframe', String(window.top !== window.self));
+            summaryRow('window.tizen (Device API)',
+                typeof window.tizen !== 'undefined' ? 'present' : 'undefined');
+            summaryRow('window.webapis (Product API)',
+                typeof window.webapis !== 'undefined' ? 'present' : 'undefined');
+            summaryRow('webapis.js injection', webapisScript);
+        }
+
+        function renderVerdict() {
+            var hasWebapis = typeof window.webapis !== 'undefined';
+            var hasSso     = typeof probe('webapis.sso') !== 'undefined';
+            var hasAdinfo  = typeof probe('webapis.adinfo') !== 'undefined';
+
+            var text;
+
+            if (!hasWebapis) {
+                text = 'VERDICT: window.webapis is not available. This runtime is not a privileged Tizen ' +
+                       'web-application container, so the SSO, Samsung Account and AdInfo APIs cannot be ' +
+                       'reached at all. This is the expected result in the TV web browser and inside an ' +
+                       'ad/microsite web view — webapis.js is a Tizen app-package virtual path ' +
+                       '($WEBAPIS), not a public web endpoint.';
+            } else if (!hasSso && !hasAdinfo) {
+                text = 'VERDICT: webapis is present but neither the sso nor the adinfo module was injected. ' +
+                       'The container is a Tizen app, but these partner modules are not exposed to it.';
+            } else {
+                text = 'VERDICT: webapis is present. See the per-probe results below — BLOCKED means the ' +
+                       'module exists but this app was not granted the required privilege ' +
+                       '(sso.partner / adinfo).';
+            }
+
+            verdictEl.textContent = text;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* the probes                                                          */
+        /* ------------------------------------------------------------------ */
+
+        function section(title, privilege) {
+            var h = document.createElement('h2');
+            h.textContent = title;
+
+            if (privilege) {
+                var p = document.createElement('span');
+                p.className = 'privilege';
+                p.textContent = 'Required privilege: ' + privilege;
+                h.appendChild(p);
+            }
+            resultsEl.appendChild(h);
+        }
+
+        function runAllProbes() {
+            resultsEl.innerHTML = '';
+            collected = [];
+
+            /* ---------------- baseline: is any TV API surface here? -------- */
+            section('Baseline — API surface detection', null);
+
+            exprProbe(
+                'Samsung Product API root object',
+                "typeof window.webapis",
+                function () { return typeof window.webapis; },
+                judgePresence
+            );
+
+            exprProbe(
+                'Tizen Device API root object',
+                "typeof window.tizen",
+                function () { return typeof window.tizen; },
+                judgePresence
+            );
+
+            exprProbe(
+                'Product API modules actually exposed',
+                "Object.keys(window.webapis || {}).sort().join(', ')",
+                function () {
+                    if (typeof window.webapis === 'undefined') {
+                        return undefined;   // judged MISSING
+                    }
+                    var keys = [];
+                    for (var k in window.webapis) { keys.push(k); }
+                    return keys.sort().join(', ') || undefined;
+                },
+                judgePresence
+            );
+
+            exprProbe(
+                'Am I running inside a Tizen application?',
+                "tizen.application.getCurrentApplication().appInfo.id",
+                function () {
+                    var app = probe('tizen.application');
+                    if (!app || typeof app.getCurrentApplication !== 'function') {
+                        throw { name: 'NotFoundError', message: 'tizen.application is unavailable' };
+                    }
+                    return app.getCurrentApplication().appInfo.id;
+                }
+            );
+
+            /* ---------------- SSO / Samsung Account ------------------------ */
+            section('SSO API — Samsung Account (webapis.sso)',
+                    'http://developer.samsung.com/privilege/sso.partner');
+
+            syncProbe(
+                'SSO plugin version',
+                'webapis.sso.getVersion',
+                "webapis.sso.getVersion();"
+            );
+
+            syncProbe(
+                'Samsung Account login state',
+                'webapis.sso.getLoginStatus',
+                "webapis.sso.getLoginStatus();"
+            );
+
+            syncProbe(
+                'Samsung Account user UID',
+                'webapis.sso.getLoginUid',
+                "webapis.sso.getLoginUid();"
+            );
+
+            buttonProbe(
+                'Samsung Account info via account view',
+                "webapis.sso.showAccountView(\n" +
+                "    'API Probe',\n" +
+                "    function (data) { /* SsoCallData: login/logout info */ },\n" +
+                "    function (err)  { /* WebAPIError */ }\n" +
+                ");",
+                function (onSuccess, onError, onThrow) {
+                    var sso = probe('webapis.sso');
+
+                    if (!sso || typeof sso.showAccountView !== 'function') {
+                        onThrow({
+                            status: STATUS_MISSING,
+                            text: 'webapis.sso.showAccountView is unavailable in this runtime.'
+                        });
+                        return;
+                    }
+                    try {
+                        sso.showAccountView('API Probe', onSuccess, onError);
+                    } catch (e) {
+                        onThrow(classifyError(e));
+                    }
+                }
+            );
+
+            buttonProbe(
+                'Samsung Account creation view',
+                "webapis.sso.showCreateAccountView(\n" +
+                "    function (num) { /* SsoNumSuccessCallback */ },\n" +
+                "    function (err) { /* WebAPIError */ }\n" +
+                ");",
+                function (onSuccess, onError, onThrow) {
+                    var sso = probe('webapis.sso');
+
+                    if (!sso || typeof sso.showCreateAccountView !== 'function') {
+                        onThrow({
+                            status: STATUS_MISSING,
+                            text: 'webapis.sso.showCreateAccountView is unavailable in this runtime.'
+                        });
+                        return;
+                    }
+                    try {
+                        sso.showCreateAccountView(onSuccess, onError);
+                    } catch (e) {
+                        onThrow(classifyError(e));
+                    }
+                }
+            );
+
+            /* ---------------- AdInfo -------------------------------------- */
+            section('AdInfo API — advertising identity (webapis.adinfo)',
+                    'http://developer.samsung.com/privilege/adinfo');
+
+            syncProbe(
+                'AdInfo plugin version',
+                'webapis.adinfo.getVersion',
+                "webapis.adinfo.getVersion();"
+            );
+
+            syncProbe(
+                'TIFA — Tizen ID For Advertising',
+                'webapis.adinfo.getTIFA',
+                "webapis.adinfo.getTIFA();"
+            );
+
+            syncProbe(
+                'Limit Ad Tracking enabled?',
+                'webapis.adinfo.isLATEnabled',
+                "webapis.adinfo.isLATEnabled();"
+            );
+
+            /* ---------------- ProductInfo (control group) ------------------ */
+            section('ProductInfo API — control group (webapis.productinfo)',
+                    'http://developer.samsung.com/privilege/productinfo');
+
+            syncProbe('ProductInfo version', 'webapis.productinfo.getVersion',
+                      "webapis.productinfo.getVersion();");
+            syncProbe('Device DUID', 'webapis.productinfo.getDuid',
+                      "webapis.productinfo.getDuid();");
+            syncProbe('Model', 'webapis.productinfo.getModel',
+                      "webapis.productinfo.getModel();");
+            syncProbe('Model code', 'webapis.productinfo.getModelCode',
+                      "webapis.productinfo.getModelCode();");
+            syncProbe('Real model', 'webapis.productinfo.getRealModel',
+                      "webapis.productinfo.getRealModel();");
+            syncProbe('Firmware', 'webapis.productinfo.getFirmware',
+                      "webapis.productinfo.getFirmware();");
+            syncProbe('Smart TV server version', 'webapis.productinfo.getSmartTVServerVersion',
+                      "webapis.productinfo.getSmartTVServerVersion();");
+
+            /* ---------------- Tizen Device API (unprivileged control) ------ */
+            section('Tizen Device API — unprivileged control (tizen.systeminfo)', 'none / public');
+
+            exprProbe(
+                'System model name capability',
+                "tizen.systeminfo.getCapability('http://tizen.org/system/model_name');",
+                function () {
+                    var si = probe('tizen.systeminfo');
+                    if (!si || typeof si.getCapability !== 'function') {
+                        throw { name: 'NotFoundError', message: 'tizen.systeminfo is unavailable' };
+                    }
+                    return si.getCapability('http://tizen.org/system/model_name');
+                }
+            );
+
+            exprProbe(
+                'Platform version capability',
+                "tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version');",
+                function () {
+                    var si = probe('tizen.systeminfo');
+                    if (!si || typeof si.getCapability !== 'function') {
+                        throw { name: 'NotFoundError', message: 'tizen.systeminfo is unavailable' };
+                    }
+                    return si.getCapability('http://tizen.org/feature/platform.version');
+                }
+            );
+
+            renderVerdict();
+            renderJson();
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* webapis.js loader                                                   */
+        /* ------------------------------------------------------------------ */
+
+        /**
+         * webapis.js lives at the Tizen app-package virtual path $WEBAPIS. It only
+         * resolves inside a packaged Tizen web application. Trying to load it is
+         * itself the most informative test: in the TV browser or a microsite web
+         * view the request 404s against the page origin and onerror fires.
+         */
+        function loadWebapisThenRun() {
+            // Already injected by the container? Then don't fight it.
+            if (typeof window.webapis !== 'undefined') {
+                renderSummary('not needed — window.webapis was already injected by the container');
+                runAllProbes();
+                return;
+            }
+
+            var src = '$WEBAPIS/webapis/webapis.js';
+            var script = document.createElement('script');
+            var done = false;
+
+            function finish(note) {
+                if (done) { return; }
+                done = true;
+                renderSummary(note);
+                runAllProbes();
+            }
+
+            script.onload = function () {
+                finish(typeof window.webapis !== 'undefined'
+                    ? 'loaded "' + src + '" and window.webapis appeared'
+                    : 'loaded "' + src + '" but window.webapis is still undefined');
+            };
+
+            script.onerror = function () {
+                finish('FAILED to load "' + src + '" — the $WEBAPIS virtual path does not resolve ' +
+                       'in this runtime (expected outside a Tizen app package)');
+            };
+
+            // Belt and braces: some runtimes fire neither handler.
+            setTimeout(function () {
+                finish('timed out after 4s loading "' + src + '" — no onload/onerror fired');
+            }, 4000);
+
+            script.type = 'text/javascript';
+            script.src = src;
+            document.head.appendChild(script);
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* remote-control navigation                                           */
+        /* ------------------------------------------------------------------ */
+
+        var KEY_LEFT   = 37;
+        var KEY_UP     = 38;
+        var KEY_RIGHT  = 39;
+        var KEY_DOWN   = 40;
+        var KEY_ENTER  = 13;
+        var KEY_RETURN = 10009;
+        var SCROLL_STEP = 140;
+
+        function navigables() {
+            return document.querySelectorAll('.navigable');
+        }
+
+        function moveFocus(delta) {
+            var items = navigables();
+            if (!items.length) { return; }
+
+            var idx = -1;
+            var i;
+            for (i = 0; i < items.length; i++) {
+                if (items[i] === document.activeElement) { idx = i; break; }
+            }
+
+            var next = idx + delta;
+            if (next < 0) { next = items.length - 1; }
+            if (next >= items.length) { next = 0; }
+
+            items[next].focus();
+            if (items[next].scrollIntoView) {
+                items[next].scrollIntoView(false);
+            }
+        }
+
+        document.addEventListener('keydown', function (event) {
+            switch (event.keyCode) {
+                case KEY_UP:
+                    window.scrollBy(0, -SCROLL_STEP);
+                    event.preventDefault();
+                    break;
+                case KEY_DOWN:
+                    window.scrollBy(0, SCROLL_STEP);
+                    event.preventDefault();
+                    break;
+                case KEY_LEFT:
+                    moveFocus(-1);
+                    event.preventDefault();
+                    break;
+                case KEY_RIGHT:
+                    moveFocus(1);
+                    event.preventDefault();
+                    break;
+                case KEY_ENTER:
+                    if (document.activeElement && document.activeElement.onclick) {
+                        document.activeElement.onclick();
+                    }
+                    break;
+                case KEY_RETURN:
+                    loadWebapisThenRun();
+                    window.scrollTo(0, 0);
+                    event.preventDefault();
+                    break;
+                default:
+                    break;
+            }
+        }, false);
+
+        // Keep the Return key from closing the app so re-run stays usable.
+        try {
+            if (probe('tizen.tvinputdevice.registerKey')) {
+                window.tizen.tvinputdevice.registerKey('Return');
+            }
+        } catch (e) {
+            /* not fatal - browser runtime has no tvinputdevice */
+        }
+
+        // Surface hard failures instead of showing a blank screen.
+        window.onerror = function (message, source, lineno) {
+            var banner = document.createElement('div');
+            banner.className = 'verdict';
+            banner.style.borderColor = '#ff5c5c';
+            banner.textContent = 'Uncaught error: ' + message + ' @ line ' + lineno;
+            document.getElementById('safe').appendChild(banner);
+            return false;
+        };
+
+        loadWebapisThenRun();
+    })();
+</script>
+</body>
+</html>
