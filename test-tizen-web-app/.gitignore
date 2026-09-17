@@ -1,0 +1,4 @@
+# Tizen build output
+.buildResult/
+*.wgt
+.sign/

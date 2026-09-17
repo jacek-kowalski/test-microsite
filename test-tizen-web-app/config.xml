@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Tizen web app wrapper for the SSO / AdInfo / ProductInfo probe.
+
+    The privilege LEVEL is not set here - it is baked into the distributor
+    certificate you sign with. Declaring sso.partner below is necessary but not
+    sufficient: signed with an ordinary Public certificate the partner privilege
+    is simply not granted, and webapis.sso calls will report MISSING or
+    SecurityError. That is the expected, documented outcome.
+
+    Privilege levels (from developer.samsung.com API references):
+      adinfo       -> Public    http://developer.samsung.com/privilege/adinfo
+      productinfo  -> Public    http://developer.samsung.com/privilege/productinfo
+      sso.partner  -> Partner   http://developer.samsung.com/privilege/sso.partner
+      sso.platform -> Platform  http://developer.samsung.com/privilege/sso.platform
+                                (getSsoState needs this one - a step ABOVE partner)
+-->
+<widget xmlns="http://www.w3.org/ns/widgets"
+        xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://samsungads.test/ApiProbe"
+        version="1.0.0"
+        viewmodes="maximized">
+
+    <tizen:application id="AdgApiPrb1.ApiProbe"
+                       package="AdgApiPrb1"
+                       required_version="2.4"/>
+
+    <content src="index.html"/>
+    <icon src="icon.png"/>
+    <name>Tizen API Probe</name>
+    <description>Probes SSO, AdInfo and ProductInfo availability and privileges.</description>
+
+    <tizen:profile name="tv-samsung"/>
+
+    <!-- Public level: granted by an ordinary self-issued Samsung dev certificate -->
+    <tizen:privilege name="http://developer.samsung.com/privilege/adinfo"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/productinfo"/>
+
+    <!-- Partner level: requires a Partner distributor certificate from Samsung.
+         Left declared on purpose so the probe records the denial as evidence. -->
+    <tizen:privilege name="http://developer.samsung.com/privilege/sso.partner"/>
+
+    <!-- Platform level: what getSsoState() requires. Platform privileges are for
+         Samsung-internal / preloaded apps, so a third-party signed app will not
+         get this even with a Partner certificate. Declared so the denial is
+         recorded rather than looking like a missing method. -->
+    <tizen:privilege name="http://developer.samsung.com/privilege/sso.platform"/>
+
+    <!-- Allows the page to be repointed at a remote microsite URL for comparison -->
+    <access origin="*" subdomains="true"/>
+
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+
+    <tizen:setting screen-orientation="landscape"
+                   context-menu="disable"
+                   background-support="disable"
+                   encryption="disable"
+                   install-location="auto"
+                   hwkey-event="enable"/>
+</widget>
