@@ -64,6 +64,7 @@
         .test.ok      { border-left-color: #3ddc84; }
         .test.blocked { border-left-color: #ff9f43; }
         .test.missing { border-left-color: #6b7488; }
+        .test.noaccount { border-left-color: #8ed6ff; }
         .test.error   { border-left-color: #ff5c5c; }
         .test.pending { border-left-color: #7fd1ff; }
 
@@ -95,6 +96,7 @@
         .badge.missing { background: #2a2f3d; color: #9aa3b5; }
         .badge.error   { background: #5c1616; color: #ff9a9a; }
         .badge.pending { background: #143a5c; color: #8ed6ff; }
+        .badge.noaccount { background: #123a4d; color: #8ed6ff; }
 
         code, pre {
             font-family: Consolas, "Courier New", monospace;
@@ -202,7 +204,9 @@
     <p class="subtitle">
         Tests whether this runtime can reach the Samsung <strong>SSO</strong>, <strong>AdInfo</strong> and
         <strong>ProductInfo</strong> product APIs. Each probe shows the exact vanilla JavaScript executed and its
-        real return value or thrown exception.
+        real return value or thrown exception. When this page runs inside the Samsung container's
+        <strong>iframe</strong> it also asks the parent for the same SSO data over
+        <strong>postMessage</strong>, since the parent holds the privilege even when this frame does not.
     </p>
 
     <h2>Runtime environment</h2>
@@ -219,6 +223,7 @@
         <div class="legend">
             <span style="color:#6cf3a5">OK &mdash; returned a value</span>
             <span style="color:#ffc078">BLOCKED &mdash; API exists, privilege denied</span>
+            <span style="color:#8ed6ff">NO ACCOUNT &mdash; API reachable, nobody signed in</span>
             <span style="color:#9aa3b5">MISSING &mdash; namespace not injected</span>
             <span style="color:#ff9a9a">ERROR &mdash; threw unexpectedly</span>
         </div>
@@ -245,6 +250,10 @@
         var STATUS_OK      = 'ok';
         var STATUS_BLOCKED = 'blocked';
         var STATUS_MISSING = 'missing';
+        // Separate from BLOCKED on purpose: an InvalidStateError from the SSO module
+        // proves the privilege WAS granted (a denial raises SecurityError instead)
+        // and only that no Samsung Account is signed in on the TV.
+        var STATUS_NOACCOUNT = 'noaccount';
         var STATUS_ERROR   = 'error';
         var STATUS_PENDING = 'pending';
 
@@ -317,15 +326,26 @@
             // from our own guards when a namespace was never injected at all.
             var status = STATUS_ERROR;
 
+            var note = '';
+
             if (name === 'SecurityError' || name === 'NotPermittedError') {
                 status = STATUS_BLOCKED;
+                note = '\n\nThe module is present but this container was not granted the privilege. ' +
+                       'For SSO that means the distributor certificate is not platform/partner level.';
             } else if (name === 'NotFoundError' || name === 'NotSupportedError') {
                 status = STATUS_MISSING;
+            } else if (name === 'InvalidStateError') {
+                // Documented for webapis.sso: "thrown if the user is not signed in".
+                // Reaching this error at all means the privilege check already passed.
+                status = STATUS_NOACCOUNT;
+                note = '\n\nDocumented as "user is not signed in". Note what this proves: the call got ' +
+                       'past the privilege check (a denial raises SecurityError), so the API is ' +
+                       'reachable here — sign in to a Samsung Account on the TV and re-run.';
             }
 
             return {
                 status: status,
-                text: name + ': ' + msg + code
+                text: name + ': ' + msg + code + note
             };
         }
 
@@ -377,7 +397,9 @@
                 settle: function (status, text) {
                     wrap.className = 'test ' + status;
                     badge.className = 'badge ' + status;
-                    badge.textContent = status.toUpperCase();
+                    badge.textContent = (status === STATUS_NOACCOUNT)
+                        ? 'NO ACCOUNT'
+                        : status.toUpperCase();
                     resEl.textContent = text;
 
                     var entry = { name: name, code: code, status: status, result: text };
@@ -458,6 +480,101 @@
                 : STATUS_OK;
         }
 
+        /* ------------------------------------------------------------------ */
+        /* webapis.sso.getSsoState decoding                                    */
+        /* ------------------------------------------------------------------ */
+
+        /*
+         * getSsoState() is documented two ways in Samsung's own reference: as
+         * returning the SsoData dictionary { bLogin, id, authToken, uid, guid },
+         * and as returning the string "login_id?auth_token?uid?guid". Handle both
+         * rather than betting on one, and report which shape the TV actually gave.
+         *
+         * Privilege: http://developer.samsung.com/privilege/sso.platform
+         * Throws: InvalidStateError (not signed in), SecurityError (no privilege),
+         *         NotSupportedError (device), UnknownError.
+         */
+
+        var SSO_STATE_ORDER = ['id', 'authToken', 'uid', 'guid'];
+
+        function callSsoState() {
+            var sso = probe('webapis.sso');
+            if (!sso || typeof sso.getSsoState !== 'function') {
+                throw { name: 'NotFoundError', message: 'webapis.sso.getSsoState is unavailable' };
+            }
+            return sso.getSsoState();
+        }
+
+        /** Show enough of a token to correlate it, never the whole thing. */
+        function maskSecret(value) {
+            var s = String(value);
+            if (s.length <= 8) { return '***(' + s.length + ' chars)'; }
+            return s.slice(0, 4) + '…' + s.slice(-4) + ' (' + s.length + ' chars, masked)';
+        }
+
+        /** Normalise either documented shape into one dictionary. */
+        function decodeSsoData(result) {
+            var out = { shape: null, bLogin: undefined, id: undefined,
+                        authToken: undefined, uid: undefined, guid: undefined };
+            var parts, i;
+
+            if (result === null || typeof result === 'undefined') {
+                out.shape = 'null/undefined — nothing returned';
+                return out;
+            }
+
+            if (typeof result === 'string') {
+                out.shape = 'delimited string "login_id?auth_token?uid?guid"';
+                parts = result.split('?');
+                for (i = 0; i < SSO_STATE_ORDER.length; i++) {
+                    out[SSO_STATE_ORDER[i]] = (i < parts.length) ? parts[i] : undefined;
+                }
+                // bLogin is not carried in the string form; infer it from the id.
+                out.bLogin = !!out.id;
+                if (parts.length !== SSO_STATE_ORDER.length) {
+                    out.shape += ' — got ' + parts.length + ' segments, expected 4';
+                }
+            } else if (typeof result === 'object') {
+                out.shape = 'SsoData dictionary';
+                out.bLogin = result.bLogin;
+                for (i = 0; i < SSO_STATE_ORDER.length; i++) {
+                    out[SSO_STATE_ORDER[i]] = result[SSO_STATE_ORDER[i]];
+                }
+            } else {
+                out.shape = 'unexpected type: ' + (typeof result);
+                return out;
+            }
+
+            if (typeof out.authToken !== 'undefined' && out.authToken !== '') {
+                out.authToken = maskSecret(out.authToken);
+            }
+            return out;
+        }
+
+        /** Mask the token inside a raw value so the screen stays photographable. */
+        function maskSsoSecrets(result) {
+            var decoded, copy, key;
+
+            if (typeof result === 'string') {
+                decoded = result.split('?');
+                if (decoded.length >= 2 && decoded[1]) {
+                    decoded[1] = maskSecret(decoded[1]);
+                }
+                return decoded.join('?');
+            }
+
+            if (result && typeof result === 'object') {
+                copy = {};
+                for (key in result) {
+                    copy[key] = (key === 'authToken' && result[key])
+                        ? maskSecret(result[key])
+                        : result[key];
+                }
+                return copy;
+            }
+            return result;
+        }
+
         /**
          * An async, UI-opening probe behind a button. showAccountView and
          * showCreateAccountView take over the screen, so they must never autorun.
@@ -509,6 +626,435 @@
             c.wrap.appendChild(btn);
         }
 
+        /* ------------------------------------------------------------------ */
+        /* parent-container bridge (postMessage)                               */
+        /* ------------------------------------------------------------------ */
+
+        /*
+         * Inside the Samsung container's <iframe> this page cannot reach webapis,
+         * but the container can. Its bridge (get-coupon-microsite:
+         * src/components/MicrositeFrame/micrositeBridge.js) answers two commands
+         * that carry SSO data:
+         *
+         *   {"getSsoState": 1}  ->  { type: 'ssoState', bLogin, id, uid, guid, authToken }
+         *   {"getGuid": 1}      ->  { guid, ssoid, co, lang, firmcode, model }   (legacy, untagged)
+         *
+         * Differences that matter when reading the results:
+         *
+         *  - getSsoState is read LIVE from webapis.sso.getSsoState() per request.
+         *    getGuid is a snapshot taken once at container start-up
+         *    (managers/tracking.js), so it can be stale.
+         *  - The getSsoState reply is sent with targetOrigin = the origin of the
+         *    iframe src, not '*', because authToken is a bearer credential. If this
+         *    page is served from a different origin than the container's iframe src
+         *    the reply is silently dropped and this probe times out.
+         *  - bLogin:false is ambiguous by design: the container collapses
+         *    InvalidStateError (not signed in), SecurityError (no sso.platform
+         *    privilege) and NotSupportedError into the same false. From inside the
+         *    frame these cannot be told apart - that is a property of the bridge,
+         *    not a gap in this probe.
+         *
+         * A populated reply here proves the CONTAINER holds sso.platform, even when
+         * every direct probe above reports MISSING.
+         */
+
+        var BRIDGE_TIMEOUT_MS = 5000;
+        var SSO_STATE_TYPE = 'ssoState';
+
+        /* getSsoState reply fields (live, tagged) */
+        var BRIDGE_SSO_FIELDS = [
+            {
+                key: 'bLogin',
+                label: 'bLogin — signed in? (via parent getSsoState)',
+                source: 'parent: Boolean(getSsoState().bLogin)',
+                secret: false,
+                emptyStatus: STATUS_NOACCOUNT,
+                emptyNote: 'false. The container collapses "not signed in", "no sso.platform ' +
+                           'privilege" and "device unsupported" into this one value, so it cannot ' +
+                           'be narrowed from inside the iframe. Check the container log ' +
+                           '([Tizen][getSsoState] error: …) to tell them apart.'
+            },
+            {
+                key: 'id',
+                label: 'id — Samsung Account login ID (via parent getSsoState)',
+                source: 'parent: getSsoState().id',
+                secret: false,
+                emptyStatus: STATUS_NOACCOUNT,
+                emptyNote: 'empty — no account signed in, or the parent call failed'
+            },
+            {
+                key: 'uid',
+                label: 'uid — Samsung Account UID (via parent getSsoState)',
+                source: 'parent: getSsoState().uid',
+                secret: false,
+                emptyStatus: STATUS_NOACCOUNT,
+                emptyNote: 'empty — no account signed in, or the parent call failed'
+            },
+            {
+                key: 'guid',
+                label: 'guid — device GUID (via parent getSsoState)',
+                source: 'parent: getSsoState().guid',
+                secret: false,
+                emptyStatus: STATUS_NOACCOUNT,
+                emptyNote: 'empty — no account signed in, or the parent call failed'
+            },
+            {
+                key: 'authToken',
+                label: 'authToken — session bearer token (via parent getSsoState)',
+                source: 'parent: getSsoState().authToken — MASKED below, never logged',
+                secret: true,
+                emptyStatus: STATUS_NOACCOUNT,
+                emptyNote: 'empty — no account signed in, or the parent call failed'
+            }
+        ];
+
+        /* getGuid reply fields (legacy, snapshotted at container start-up) */
+        var BRIDGE_GUID_FIELDS = [
+            {
+                key: 'ssoid',
+                label: 'ssoid — Samsung Account ID (via parent getGuid)',
+                source: 'parent: cached getSsoState().id',
+                secret: false,
+                emptyStatus: STATUS_NOACCOUNT,
+                emptyNote: 'empty — the container had no account at start-up, or its own call failed'
+            },
+            {
+                key: 'guid',
+                label: 'guid — device GUID (via parent getGuid)',
+                source: 'parent: cached webapis.sso.getGuid()',
+                secret: false,
+                emptyStatus: STATUS_NOACCOUNT,
+                emptyNote: 'empty — the container\'s getGuid() returned nothing'
+            },
+            {
+                key: 'co',
+                label: 'co — country code (via parent getGuid)',
+                source: 'parent tracking metadata',
+                secret: false,
+                emptyStatus: STATUS_MISSING,
+                emptyNote: 'not populated by the container'
+            },
+            {
+                key: 'lang',
+                label: 'lang — locale (via parent getGuid)',
+                source: 'parent: LanguageManager.getLocale()',
+                secret: false,
+                emptyStatus: STATUS_MISSING,
+                emptyNote: 'not populated by the container'
+            },
+            {
+                key: 'firmcode',
+                label: 'firmcode — firmware (via parent getGuid)',
+                source: 'parent: webapis.productinfo.getFirmware()',
+                secret: false,
+                emptyStatus: STATUS_MISSING,
+                emptyNote: 'not populated by the container'
+            },
+            {
+                key: 'model',
+                label: 'model — model code (via parent getGuid)',
+                source: 'parent: webapis.productinfo.getModelCode()',
+                secret: false,
+                emptyStatus: STATUS_MISSING,
+                emptyNote: 'not populated by the container'
+            }
+        ];
+
+        /* One request slot per command, so the two replies never cross-settle. */
+        var bridge = {
+            ssoState: { card: null, fields: null, timer: null, retry: 0 },
+            getGuid:  { card: null, fields: null, timer: null, retry: 0 },
+            logCard: null,
+            log: []
+        };
+
+        function isFramed() {
+            return !!(window.parent && window.parent !== window);
+        }
+
+        /** Container messages are JSON strings; tolerate raw objects too. */
+        function parseMessage(data) {
+            if (typeof data === 'string') {
+                try {
+                    return JSON.parse(data);
+                } catch (e) {
+                    return null;
+                }
+            }
+            return data;
+        }
+
+        /**
+         * Route an inbound message to the slot that asked for it.
+         *
+         * The tagged getSsoState reply also carries `guid`, so checking for `guid`
+         * alone would misroute it into the legacy getGuid card. Check `type` first.
+         */
+        function replyKind(data) {
+            if (!data || typeof data !== 'object') { return null; }
+            if (data.type === SSO_STATE_TYPE) { return 'ssoState'; }
+            if (typeof data.ssoid !== 'undefined') { return 'getGuid'; }
+            return null;
+        }
+
+        /** Never render a bearer token in full: it ends up in the on-screen JSON dump. */
+        function maskReply(data) {
+            var copy = {};
+            var key;
+
+            if (!data || typeof data !== 'object') { return data; }
+
+            for (key in data) {
+                copy[key] = (key === 'authToken' && data[key])
+                    ? maskSecret(data[key])
+                    : data[key];
+            }
+            return copy;
+        }
+
+        function renderBridgeLog() {
+            if (!bridge.logCard) { return; }
+
+            if (!bridge.log.length) {
+                bridge.logCard.settle(STATUS_MISSING, 'no postMessage received from any window yet.');
+                return;
+            }
+
+            var lines = [];
+            var i;
+            for (i = 0; i < bridge.log.length; i++) {
+                lines.push('#' + (i + 1) +
+                           ' origin=' + (bridge.log[i].origin || 'null') +
+                           ' fromParent=' + bridge.log[i].fromParent +
+                           '\n' + bridge.log[i].data);
+            }
+            bridge.logCard.settle(STATUS_OK, lines.join('\n\n'));
+        }
+
+        /**
+         * @param noReply when set, no reply ever arrived — say that instead of
+         *                blaming the container's contract for a missing key.
+         */
+        function fillBridgeFields(slot, spec, data, noReply) {
+            var i, field, card_, value;
+
+            for (i = 0; i < spec.length; i++) {
+                field = spec[i];
+                card_ = slot.fields ? slot.fields[field.key] : null;
+                if (!card_) { continue; }
+
+                value = data[field.key];
+
+                if (noReply) {
+                    card_.settle(STATUS_MISSING, noReply);
+                } else if (typeof value === 'undefined') {
+                    card_.settle(STATUS_MISSING,
+                        'the reply contained no "' + field.key + '" key — this container ' +
+                        'implements a different bridge contract.');
+                } else if (value === '' || value === null || value === false) {
+                    card_.settle(field.emptyStatus, stringify(value) + '\n' + field.emptyNote);
+                } else {
+                    card_.settle(STATUS_OK, field.secret ? maskSecret(value) : stringify(value));
+                }
+            }
+        }
+
+        /**
+         * Post one command to the parent and arm a timeout.
+         *
+         * postMessage is asynchronous in a real browser, but a same-context stub can
+         * reply before it returns — so re-read slot.card after sending rather than
+         * assuming it is still ours to touch.
+         */
+        function askParent(slot, spec, command, label) {
+            var c = slot.card;
+
+            if (!c) { return; }
+
+            if (slot.timer) {
+                window.clearTimeout(slot.timer);
+                slot.timer = null;
+            }
+
+            if (!isFramed()) {
+                slot.card = null;
+                c.settle(STATUS_MISSING,
+                    'window.parent === window — this page is not in an iframe, so there is no ' +
+                    'container to ask. Load it inside the Samsung microsite container to test ' +
+                    'the bridge.');
+                fillBridgeFields(slot, spec, {},
+                    'not asked — this page is not inside an iframe, so there is no container to reply.');
+                return;
+            }
+
+            try {
+                // '*' is correct for the REQUEST: we do not know the container's
+                // origin, and the request carries no secret. The container replies
+                // to getSsoState with a specific targetOrigin of its own.
+                window.parent.postMessage(JSON.stringify(command), '*');
+            } catch (e) {
+                var info = classifyError(e);
+                slot.card = null;
+                c.settle(info.status, 'postMessage threw -> ' + info.text);
+                return;
+            }
+
+            if (slot.card !== c) { return; }   // already answered synchronously
+
+            c.badge.className = 'badge pending';
+            c.badge.textContent = 'WAITING';
+            c.result.textContent = label + ' sent to parent, waiting up to ' +
+                                   (BRIDGE_TIMEOUT_MS / 1000) + 's for a reply…';
+
+            slot.timer = window.setTimeout(function () {
+                slot.timer = null;
+                if (slot.card !== c) { return; }
+
+                slot.card = null;
+                c.settle(STATUS_MISSING,
+                    'no reply within ' + (BRIDGE_TIMEOUT_MS / 1000) + 's. The page IS framed, but the ' +
+                    'container did not answer ' + label + '. Either it is not the Samsung microsite ' +
+                    'container, its bridge was not listening yet, or — for getSsoState — its reply ' +
+                    'was dropped because this page\'s origin does not match the iframe src origin ' +
+                    'it replies to. Select the button to retry.');
+                fillBridgeFields(slot, spec, {},
+                    'no reply to ' + label + ' within ' + (BRIDGE_TIMEOUT_MS / 1000) + 's.');
+            }, BRIDGE_TIMEOUT_MS);
+        }
+
+        function requestSsoState() {
+            askParent(bridge.ssoState, BRIDGE_SSO_FIELDS, { getSsoState: 1 }, 'getSsoState');
+        }
+
+        function requestGuid() {
+            askParent(bridge.getGuid, BRIDGE_GUID_FIELDS, { getGuid: 1 }, 'getGuid');
+        }
+
+        function handleBridgeMessage(event) {
+            var data = parseMessage(event.data);
+            var kind = replyKind(data);
+            var slot, spec, c;
+
+            // Log the masked form: the raw string would expose authToken on screen.
+            bridge.log.push({
+                origin: event.origin,
+                fromParent: event.source === window.parent,
+                data: (kind === 'ssoState')
+                    ? JSON.stringify(maskReply(data))
+                    : ((typeof event.data === 'string') ? event.data : stringify(event.data))
+            });
+            renderBridgeLog();
+
+            if (!kind) { return; }
+
+            slot = bridge[kind];
+            spec = (kind === 'ssoState') ? BRIDGE_SSO_FIELDS : BRIDGE_GUID_FIELDS;
+
+            if (!slot.card) { return; }   // unsolicited, or already settled
+
+            if (slot.timer) {
+                window.clearTimeout(slot.timer);
+                slot.timer = null;
+            }
+
+            c = slot.card;
+            slot.card = null;
+
+            c.settle(STATUS_OK,
+                'reply from parent (origin ' + (event.origin || 'null') + '):\n' +
+                stringify(maskReply(data)));
+
+            fillBridgeFields(slot, spec, data);
+        }
+
+        /** Build the request card, its retry button, and one card per reply field. */
+        function bridgeProbeGroup(slot, spec, title, code, send) {
+            slot.card = card(title, code);
+
+            var btn = document.createElement('div');
+            btn.className = 'action navigable';
+            btn.setAttribute('tabindex', '0');
+            btn.textContent = 'Run: re-send';
+            btn.onclick = function () {
+                if (!slot.card) {
+                    slot.retry += 1;
+                    slot.card = card(title + ' (retry ' + slot.retry + ')', code);
+                }
+                send();
+            };
+            slot.card.wrap.appendChild(btn);
+
+            slot.fields = {};
+            var i, field;
+            for (i = 0; i < spec.length; i++) {
+                field = spec[i];
+                slot.fields[field.key] = card(field.label,
+                    'reply.' + field.key + '   // ' + field.source);
+                slot.fields[field.key].result.textContent = 'waiting for the reply…';
+            }
+
+            send();
+        }
+
+        function runBridgeProbes() {
+            section('Parent container bridge — SSO by proxy (postMessage)',
+                    'held by the container, not by this page');
+
+            exprProbe(
+                'Is this page inside an iframe?',
+                "window.parent !== window",
+                function () { return isFramed(); },
+                function (value) { return value ? STATUS_OK : STATUS_MISSING; }
+            );
+
+            exprProbe(
+                'Container boot payload (iframe name)',
+                "JSON.parse(window.name);  // { serverType, sessionId, agTid }",
+                function () {
+                    if (!window.name) { return undefined; }
+                    var parsed = parseMessage(window.name);
+                    return parsed === null ? window.name : parsed;
+                },
+                judgePresence
+            );
+
+            bridgeProbeGroup(
+                bridge.ssoState,
+                BRIDGE_SSO_FIELDS,
+                'getSsoState round trip to parent (live)',
+                "window.addEventListener('message', function (event) {\n" +
+                "    var reply = JSON.parse(event.data);\n" +
+                "    if (reply.type !== 'ssoState') { return; }\n" +
+                "    // { bLogin, id, uid, guid, authToken }\n" +
+                "});\n" +
+                "\n" +
+                "window.parent.postMessage(JSON.stringify({ getSsoState: 1 }), '*');",
+                requestSsoState
+            );
+
+            bridgeProbeGroup(
+                bridge.getGuid,
+                BRIDGE_GUID_FIELDS,
+                'getGuid round trip to parent (legacy, cached)',
+                "window.addEventListener('message', function (event) {\n" +
+                "    var reply = JSON.parse(event.data);\n" +
+                "    // untagged legacy shape: { guid, ssoid, co, lang, firmcode, model }\n" +
+                "});\n" +
+                "\n" +
+                "window.parent.postMessage(JSON.stringify({ getGuid: 1 }), '*');",
+                requestGuid
+            );
+
+            bridge.logCard = card(
+                'All inbound postMessages',
+                "window.addEventListener('message', function (event) {\n" +
+                "    log(event.origin, event.source === window.parent, event.data);\n" +
+                "});"
+            );
+            renderBridgeLog();
+        }
+
+
         function renderJson() {
             var payload = {
                 capturedAt: new Date().toISOString(),
@@ -516,6 +1062,8 @@
                 url: window.location.href,
                 hasTizen: typeof window.tizen !== 'undefined',
                 hasWebapis: typeof window.webapis !== 'undefined',
+                inIframe: isFramed(),
+                windowName: window.name || '',
                 probes: collected
             };
             jsonEl.textContent = JSON.stringify(payload, null, 2);
@@ -581,7 +1129,8 @@
             } else {
                 text = 'VERDICT: webapis is present. See the per-probe results below — BLOCKED means the ' +
                        'module exists but this app was not granted the required privilege ' +
-                       '(sso.partner / adinfo).';
+                       '(sso.partner, sso.platform for getSsoState, adinfo). NO ACCOUNT means the ' +
+                       'privilege was granted and no Samsung Account is signed in.';
             }
 
             verdictEl.textContent = text;
@@ -653,7 +1202,7 @@
 
             /* ---------------- SSO / Samsung Account ------------------------ */
             section('SSO API — Samsung Account (webapis.sso)',
-                    'http://developer.samsung.com/privilege/sso.partner');
+                    '.../privilege/sso.partner — except getSsoState, which needs .../privilege/sso.platform');
 
             syncProbe(
                 'SSO plugin version',
@@ -671,6 +1220,42 @@
                 'Samsung Account user UID',
                 'webapis.sso.getLoginUid',
                 "webapis.sso.getLoginUid();"
+            );
+
+            // getSsoState is what the get-coupon microsite container actually uses
+            // (src/managers/tizen.js: getSsoId -> webapis.sso.getSsoState().id).
+            // Its privilege is sso.platform, a step above the sso.partner the rest
+            // of this section needs, so it can fail while the others succeed.
+            exprProbe(
+                'SSO state — raw return value',
+                "var result = webapis.sso.getSsoState();\n" +
+                "// SsoData dictionary { bLogin, id, authToken, uid, guid },\n" +
+                "// or on some firmwares the string \"login_id?auth_token?uid?guid\"\n" +
+                "console.log('SSO State: ' + result);",
+                function () {
+                    return maskSsoSecrets(callSsoState());
+                },
+                judgePresence
+            );
+
+            exprProbe(
+                'SSO state — decoded fields',
+                "var d = webapis.sso.getSsoState();\n" +
+                "d.bLogin;  d.id;  d.authToken;  d.uid;  d.guid;",
+                function () { return decodeSsoData(callSsoState()); }
+            );
+
+            exprProbe(
+                'Samsung Account ID from SSO state',
+                "webapis.sso.getSsoState().id;   // what the container reads",
+                function () { return decodeSsoData(callSsoState()).id; },
+                judgePresence
+            );
+
+            syncProbe(
+                'SSO GUID',
+                'webapis.sso.getGuid',
+                "webapis.sso.getGuid();"
             );
 
             buttonProbe(
@@ -721,6 +1306,9 @@
                     }
                 }
             );
+
+            /* ---------------- SSO by proxy, via the container --------------- */
+            runBridgeProbes();
 
             /* ---------------- AdInfo -------------------------------------- */
             section('AdInfo API — advertising identity (webapis.adinfo)',
@@ -912,6 +1500,10 @@
                     break;
             }
         }, false);
+
+        // Installed once, not per run: re-running the probes must not stack up
+        // duplicate listeners that each settle the same card.
+        window.addEventListener('message', handleBridgeMessage, false);
 
         // Keep the Return key from closing the app so re-run stays usable.
         try {
