@@ -636,18 +636,25 @@
          * src/components/MicrositeFrame/micrositeBridge.js) answers two commands
          * that carry SSO data:
          *
+         *   {"ping": ""}        ->  { type: 'pong', ping: 'pong' }
          *   {"getSsoState": 1}  ->  { type: 'ssoState', bLogin, id, uid, guid, authToken }
          *   {"getGuid": 1}      ->  { guid, ssoid, co, lang, firmcode, model }   (legacy, untagged)
          *
          * Differences that matter when reading the results:
          *
+         *  - ping is a pure capability probe. It is the ONLY positive signal that a
+         *    bridge exists: webapis / tizen / widget are injected only into documents
+         *    of the signed package so they are undefined in here, and window.parent
+         *    is opaque under same-origin policy. Nothing can be feature-detected.
          *  - getSsoState is read LIVE from webapis.sso.getSsoState() per request.
          *    getGuid is a snapshot taken once at container start-up
          *    (managers/tracking.js), so it can be stale.
          *  - The getSsoState reply is sent with targetOrigin = the origin of the
          *    iframe src, not '*', because authToken is a bearer credential. If this
          *    page is served from a different origin than the container's iframe src
-         *    the reply is silently dropped and this probe times out.
+         *    the reply is silently dropped and this probe times out. ping and getGuid
+         *    do fall back to '*', which is what makes the diagnosis card at the end
+         *    of this section able to tell an origin mismatch from a missing bridge.
          *  - bLogin:false is ambiguous by design: the container collapses
          *    InvalidStateError (not signed in), SecurityError (no sso.platform
          *    privilege) and NotSupportedError into the same false. From inside the
@@ -660,6 +667,26 @@
 
         var BRIDGE_TIMEOUT_MS = 5000;
         var SSO_STATE_TYPE = 'ssoState';
+        var PONG_TYPE = 'pong';
+
+        // The container's own documented detection helper (docs/micrositeFrame.md)
+        // gives up after 1s. Waiting longer here is deliberate - a probe should not
+        // report "no container" when the answer was merely slow - but a round trip
+        // above this budget is worth flagging, because production code would have
+        // already resolved false.
+        var PING_BUDGET_MS = 1000;
+
+        /* ping reply fields (capability probe, tagged) */
+        var BRIDGE_PING_FIELDS = [
+            {
+                key: 'ping',
+                label: 'ping — container bridge alive? (via parent ping)',
+                source: "parent: replies { type: 'pong', ping: 'pong' }",
+                secret: false,
+                emptyStatus: STATUS_MISSING,
+                emptyNote: 'empty — a reply arrived tagged type:"pong" but without the ping field'
+            }
+        ];
 
         /* getSsoState reply fields (live, tagged) */
         var BRIDGE_SSO_FIELDS = [
@@ -760,11 +787,15 @@
             }
         ];
 
-        /* One request slot per command, so the two replies never cross-settle. */
+        /* One request slot per command, so the replies never cross-settle.
+         * outcome is what the diagnosis card reads: null while in flight, then one
+         * of 'ok' / 'timeout' / 'notframed' / 'error'. */
         var bridge = {
-            ssoState: { card: null, fields: null, timer: null, retry: 0 },
-            getGuid:  { card: null, fields: null, timer: null, retry: 0 },
+            ping:     { card: null, fields: null, timer: null, retry: 0, sentAt: 0, outcome: null },
+            ssoState: { card: null, fields: null, timer: null, retry: 0, sentAt: 0, outcome: null },
+            getGuid:  { card: null, fields: null, timer: null, retry: 0, sentAt: 0, outcome: null },
             logCard: null,
+            diagnosisCard: null,
             log: []
         };
 
@@ -792,6 +823,7 @@
          */
         function replyKind(data) {
             if (!data || typeof data !== 'object') { return null; }
+            if (data.type === PONG_TYPE) { return 'ping'; }
             if (data.type === SSO_STATE_TYPE) { return 'ssoState'; }
             if (typeof data.ssoid !== 'undefined') { return 'getGuid'; }
             return null;
@@ -829,6 +861,88 @@
                            '\n' + bridge.log[i].data);
             }
             bridge.logCard.settle(STATUS_OK, lines.join('\n\n'));
+        }
+
+        /**
+         * Cross-reference the three round trips into one conclusion.
+         *
+         * The load-bearing asymmetry: ping and getGuid reply with targetOrigin '*'
+         * (ping falls back to it, getGuid always uses it), while getSsoState only
+         * ever replies to the exact origin of the iframe src. So "ping answered but
+         * getSsoState did not" is not ambiguous — it points at an origin mismatch or
+         * a container predating the getSsoState handler, NOT at a missing bridge.
+         */
+        function renderBridgeDiagnosis() {
+            var p = bridge.ping.outcome;
+            var s = bridge.ssoState.outcome;
+            var g = bridge.getGuid.outcome;
+
+            if (!bridge.diagnosisCard) { return; }
+
+            // Wait for all three: a partial verdict would flip as replies land.
+            if (!p || !s || !g) {
+                bridge.diagnosisCard.result.textContent =
+                    'waiting for all three round trips to resolve…\n' +
+                    '  ping        ' + (p || 'in flight') + '\n' +
+                    '  getSsoState ' + (s || 'in flight') + '\n' +
+                    '  getGuid     ' + (g || 'in flight');
+                return;
+            }
+
+            var summary = 'ping=' + p + '  getSsoState=' + s + '  getGuid=' + g + '\n\n';
+
+            if (p === 'notframed') {
+                bridge.diagnosisCard.settle(STATUS_MISSING, summary +
+                    'This page is the top-level document, so no bridge can exist. Expected when ' +
+                    'running as the packaged .wgt — load the page as a URL inside the container\'s ' +
+                    'iframe to exercise this section.');
+                return;
+            }
+
+            if (p === 'ok' && s === 'ok') {
+                bridge.diagnosisCard.settle(STATUS_OK, summary +
+                    'The container answers ping AND getSsoState. The bridge is the current build, ' +
+                    'origins line up, and SSO by proxy works from here — read the field cards above ' +
+                    'for whether an account is actually signed in.');
+                return;
+            }
+
+            if (p === 'ok' && s !== 'ok') {
+                bridge.diagnosisCard.settle(STATUS_BLOCKED, summary +
+                    'A bridge IS present — ping came back — but getSsoState did not answer. Two ' +
+                    'candidates, and getGuid tells them apart:\n\n' +
+                    (g === 'ok'
+                        ? '  getGuid also answered. getGuid replies with targetOrigin "*" and ' +
+                          'getSsoState never does, so the most likely cause is an ORIGIN MISMATCH: ' +
+                          'this page\'s origin differs from the origin of the container\'s iframe ' +
+                          'src, and the reply was dropped by the browser. Serve the page from the ' +
+                          'origin the container points at.'
+                        : '  getGuid did not answer either, so this may be an older container that ' +
+                          'implements ping but not the SSO commands, or its handlers were not ' +
+                          'mounted yet when the probes ran. Press Return to re-run.'));
+                return;
+            }
+
+            if (p !== 'ok' && (s === 'ok' || g === 'ok')) {
+                bridge.diagnosisCard.settle(STATUS_BLOCKED, summary +
+                    'Unexpected combination: the SSO/GUID commands answered but ping did not. That ' +
+                    'means the container predates the ping handler — it is a real bridge, just an ' +
+                    'older build. Do not use ping alone to feature-detect against this container.');
+                return;
+            }
+
+            bridge.diagnosisCard.settle(STATUS_MISSING, summary +
+                'Framed, but nothing answered any of the three commands. Either the parent is not ' +
+                'the Samsung microsite container, or its message listener was not mounted yet. Note ' +
+                'the container ignores messages whose event.source is not its own iframe\'s ' +
+                'contentWindow, so this must be the frame\'s top-level document — not a nested ' +
+                'iframe. Press Return to re-run.');
+        }
+
+        /** Mark a slot resolved and refresh the conclusion. */
+        function settleOutcome(slot, outcome) {
+            slot.outcome = outcome;
+            renderBridgeDiagnosis();
         }
 
         /**
@@ -884,8 +998,11 @@
                     'the bridge.');
                 fillBridgeFields(slot, spec, {},
                     'not asked — this page is not inside an iframe, so there is no container to reply.');
+                settleOutcome(slot, 'notframed');
                 return;
             }
+
+            slot.sentAt = (new Date()).getTime();
 
             try {
                 // '*' is correct for the REQUEST: we do not know the container's
@@ -896,6 +1013,7 @@
                 var info = classifyError(e);
                 slot.card = null;
                 c.settle(info.status, 'postMessage threw -> ' + info.text);
+                settleOutcome(slot, 'error');
                 return;
             }
 
@@ -919,7 +1037,19 @@
                     'it replies to. Select the button to retry.');
                 fillBridgeFields(slot, spec, {},
                     'no reply to ' + label + ' within ' + (BRIDGE_TIMEOUT_MS / 1000) + 's.');
+                settleOutcome(slot, 'timeout');
             }, BRIDGE_TIMEOUT_MS);
+        }
+
+        function specFor(kind) {
+            if (kind === 'ping')     { return BRIDGE_PING_FIELDS; }
+            if (kind === 'ssoState') { return BRIDGE_SSO_FIELDS; }
+            return BRIDGE_GUID_FIELDS;
+        }
+
+        function requestPing() {
+            // Docs use { ping: '' }; the container matches on key presence, not value.
+            askParent(bridge.ping, BRIDGE_PING_FIELDS, { ping: '' }, 'ping');
         }
 
         function requestSsoState() {
@@ -933,7 +1063,7 @@
         function handleBridgeMessage(event) {
             var data = parseMessage(event.data);
             var kind = replyKind(data);
-            var slot, spec, c;
+            var slot, spec, c, elapsed, timing;
 
             // Log the masked form: the raw string would expose authToken on screen.
             bridge.log.push({
@@ -948,7 +1078,7 @@
             if (!kind) { return; }
 
             slot = bridge[kind];
-            spec = (kind === 'ssoState') ? BRIDGE_SSO_FIELDS : BRIDGE_GUID_FIELDS;
+            spec = specFor(kind);
 
             if (!slot.card) { return; }   // unsolicited, or already settled
 
@@ -960,11 +1090,23 @@
             c = slot.card;
             slot.card = null;
 
+            elapsed = slot.sentAt ? ((new Date()).getTime() - slot.sentAt) : null;
+            timing = (elapsed === null) ? '' : ('\n\nround trip: ' + elapsed + 'ms');
+
+            // Only ping has a documented budget to miss: the container's own
+            // detection helper resolves false after 1s.
+            if (kind === 'ping' && elapsed !== null && elapsed > PING_BUDGET_MS) {
+                timing += ' — SLOWER than the ' + PING_BUDGET_MS + 'ms the container\'s documented ' +
+                          'detection helper waits, so production code would already have concluded ' +
+                          '"not in a container". Worth reporting.';
+            }
+
             c.settle(STATUS_OK,
                 'reply from parent (origin ' + (event.origin || 'null') + '):\n' +
-                stringify(maskReply(data)));
+                stringify(maskReply(data)) + timing);
 
             fillBridgeFields(slot, spec, data);
+            settleOutcome(slot, 'ok');
         }
 
         /** Build the request card, its retry button, and one card per reply field. */
@@ -980,6 +1122,8 @@
                     slot.retry += 1;
                     slot.card = card(title + ' (retry ' + slot.retry + ')', code);
                 }
+                slot.outcome = null;          // diagnosis goes back to "waiting"
+                renderBridgeDiagnosis();
                 send();
             };
             slot.card.wrap.appendChild(btn);
@@ -997,6 +1141,17 @@
         }
 
         function runBridgeProbes() {
+            // A re-run rebuilds every card, so the previous run's verdicts must not
+            // leak into the new diagnosis. Stale timers from the old run are already
+            // inert: they bail on the slot.card !== c check.
+            var kinds = ['ping', 'ssoState', 'getGuid'];
+            var n;
+            for (n = 0; n < kinds.length; n++) {
+                bridge[kinds[n]].outcome = null;
+                bridge[kinds[n]].sentAt = 0;
+            }
+            bridge.diagnosisCard = null;
+
             section('Parent container bridge — SSO by proxy (postMessage)',
                     'held by the container, not by this page');
 
@@ -1016,6 +1171,22 @@
                     return parsed === null ? window.name : parsed;
                 },
                 judgePresence
+            );
+
+            // Asked first: it is the cheapest command and the only one whose answer
+            // means "a bridge exists" independently of privileges or sign-in state.
+            bridgeProbeGroup(
+                bridge.ping,
+                BRIDGE_PING_FIELDS,
+                'ping round trip to parent (container presence)',
+                "window.addEventListener('message', function (event) {\n" +
+                "    var reply = JSON.parse(event.data);\n" +
+                "    if (reply.type !== 'pong') { return; }\n" +
+                "    // the bridge is there — reply is { type: 'pong', ping: 'pong' }\n" +
+                "});\n" +
+                "\n" +
+                "window.parent.postMessage(JSON.stringify({ ping: '' }), '*');",
+                requestPing
             );
 
             bridgeProbeGroup(
@@ -1052,6 +1223,15 @@
                 "});"
             );
             renderBridgeLog();
+
+            bridge.diagnosisCard = card(
+                'Bridge diagnosis — what the three round trips together mean',
+                "// ping and getGuid reply with targetOrigin '*';\n" +
+                "// getSsoState only ever replies to the iframe src origin.\n" +
+                "// Comparing which answered separates an origin mismatch\n" +
+                "// from an absent or outdated bridge."
+            );
+            renderBridgeDiagnosis();
         }
 
 
