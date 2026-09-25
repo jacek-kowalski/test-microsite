@@ -56,11 +56,23 @@
                 border-radius: 8px;
                 cursor: pointer;
             }
+            /* Still red, but unmistakably the odd one out: this is the only button that mails a
+               real subscriber, and ENTER acts on whichever button happens to hold focus. */
+            .btn-prod {
+                background: #7f0f0a;
+                border-style: dashed;
+                border-color: #ff9a92;
+            }
             /* The TV has no pointer, so the focused button must be obvious from across a room. */
             .btn.focused {
                 background: #e8453a;
                 border-color: #ffffff;
                 box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.25);
+            }
+            /* keep the prod button darker even while focused, so focus never disguises it as one
+               of the safe two (the dashed border survives, .btn.focused only sets border-color) */
+            .btn-prod.focused {
+                background: #c2170f;
             }
             .btn.busy {
                 opacity: 0.45;
@@ -204,6 +216,9 @@
                 <div class="actions">
                     <button type="button" class="btn" id="btnIframe">Send email from iframe</button>
                     <button type="button" class="btn" id="btnContainer">Send email from container</button>
+                    <button type="button" class="btn btn-prod" id="btnContainerProd">
+                        Send email from container [C2E prod]
+                    </button>
                 </div>
             </div>
 
@@ -235,7 +250,10 @@
                 <tbody id="sendRows"></tbody>
             </table>
 
-            <h2>3 &ndash; POST /send-email from the container (layer 2, via sendEmail bridge command)</h2>
+            <h2>
+                3 &ndash; POST /send-email from the container (layer 2, via sendEmail bridge command) &ndash; prod row
+                needs the dashed button
+            </h2>
             <table>
                 <thead>
                     <tr>
@@ -259,8 +277,9 @@
 
             <p class="hint">
                 <b>LEFT / RIGHT</b> = choose a button &nbsp;&middot;&nbsp; <b>OK / ENTER</b> = press it
-                &nbsp;&middot;&nbsp; <b>DOWN</b> = re-run section 1. Both buttons send a real request with a real OSP
-                token, so nothing in sections 2 and 3 starts on its own.
+                &nbsp;&middot;&nbsp; <b>DOWN</b> = re-run section 1. Every button sends a real request with a real OSP
+                token, so nothing in sections 2 and 3 starts on its own. The
+                <b>dashed [C2E prod]</b> button is the only one that mails a real subscriber.
             </p>
         </div>
 
@@ -284,15 +303,32 @@
                 var CREATIVE_ID = 621206;
                 var FLIGHT_ID = 637161;
 
-                /* Production is deliberately absent from this list. click2email-prod.samsungads.com
-                   and click2email.samsungads.com must never be called from a test page: a successful
-                   /send-email there mails a real subscriber and burns the antispam slot for that
-                   address. Both hosts below are non-production deployments of the same chart.
-                   `key` must match a key of SEND_EMAIL_ENDPOINTS in the container. */
+                /* Non-production deployments of the same chart. `key` must match a key of
+                   SEND_EMAIL_ENDPOINTS in the container, which is what turns it into a URL. */
                 var ENVIRONMENTS = [
                     { key: 'staging', name: 'staging', base: 'https://click2email-staging.samsungads.com' },
                     { key: 'preprod', name: 'pre-prod', base: 'https://click2email-pre-prod.samsungads.com' }
                 ];
+
+                /* Production, reachable ONLY from the container button - it is deliberately absent
+                   from ENVIRONMENTS so the iframe section never touches it, and so the ordinary
+                   container button does not either.
+
+                   A successful call here sends a real e-mail to the Samsung Account signed into
+                   this TV and uses up that address's antispam slot for the creative, so pressing
+                   twice does not send twice: the limiter drops the second one. Reset it with the
+                   service's GET /limiter-override?flight_id= endpoint.
+
+                   click2email.samsungads.com is the public ALB host from production.yaml, the same
+                   ingress family as the staging host above. The prod ids differ from the test ids. */
+                var PROD_TARGET = {
+                    key: 'prod',
+                    name: 'PRODUCTION',
+                    base: 'https://click2email.samsungads.com',
+                    isProd: true,
+                    flightId: 661312,
+                    creativeId: 606123
+                };
 
                 /* Boot data arrives in window.name as JSON. Read it before anything else. */
                 var bootName = window.name;
@@ -523,15 +559,24 @@
                         }
                     }
 
-                    for (e = 0; e < ENVIRONMENTS.length; e++) {
+                    var containerTargets = ENVIRONMENTS.concat([PROD_TARGET]);
+                    for (e = 0; e < containerTargets.length; e++) {
+                        var target = containerTargets[e];
                         makeRow(
                             containerRowsEl,
-                            ENVIRONMENTS[e].key,
-                            ENVIRONMENTS[e].name + "  { sendEmail: '" + ENVIRONMENTS[e].key + "' }",
-                            'container posts with its own token',
+                            target.key,
+                            target.name + "  { sendEmail: '" + target.key + "' }",
+                            'flight ' + targetFlightId(target) + ' / creative ' + targetCreativeId(target),
                             containerRowEls
                         );
-                        setContainerRow(ENVIRONMENTS[e].key, 'NOT RUN', 's-skip', 'press "Send email from container"');
+                        setContainerRow(
+                            target.key,
+                            'NOT RUN',
+                            's-skip',
+                            target.isProd
+                                ? 'press "Send email from container [C2E prod]" - SENDS A REAL E-MAIL'
+                                : 'press "Send email from container"'
+                        );
                     }
                 }
 
@@ -1087,6 +1132,16 @@
 
                 /* ---------- section 3: POST /send-email from the container ---------- */
 
+                /* Production runs against different ad ids, so each target may override the two
+                   test ids. Everything else about the call is identical. */
+                function targetFlightId(target) {
+                    return target.flightId || FLIGHT_ID;
+                }
+
+                function targetCreativeId(target) {
+                    return target.creativeId || CREATIVE_ID;
+                }
+
                 /* The command names an environment key, never a URL: the container attaches its
                    own OSP token, so it must not let this page choose the destination. It also
                    fetches the token and the OSP user id itself - nothing credential-shaped
@@ -1113,13 +1168,17 @@
                     };
 
                     var payload = JSON.stringify({
-                        sendEmail: { env: env.key, flightId: FLIGHT_ID, creativeId: CREATIVE_ID }
+                        sendEmail: {
+                            env: env.key,
+                            flightId: targetFlightId(env),
+                            creativeId: targetCreativeId(env)
+                        }
                     });
                     console.log(LOG_PREFIX + ' send ' + payload);
                     window.parent.postMessage(payload, '*');
                 }
 
-                function explainContainer(data, elapsed) {
+                function explainContainer(target, data, elapsed) {
                     if (!data) {
                         return {
                             text: 'NO REPLY',
@@ -1150,7 +1209,13 @@
                         return {
                             text: 'OK ' + data.status + ' ' + data.ms + 'ms',
                             cls: 's-ok',
-                            detail: evidence + ' // ' + describe(data.headers)
+                            /* On production the job was accepted for a real address, so say so
+                               here - the HTTP status alone reads the same as a staging success. */
+                            detail:
+                                (target.isProd ? 'REAL E-MAIL QUEUED to the signed-in account. ' : '') +
+                                evidence +
+                                ' // ' +
+                                describe(data.headers)
                         };
                     }
 
@@ -1173,45 +1238,51 @@
                     return { text: 'FAIL', cls: 's-timeout', detail: detail };
                 }
 
-                function runContainerChecks() {
+                /* One runner for both container buttons. They differ only in which targets they
+                   walk, so the prod button cannot drift away from the tested path. */
+                function runContainer(targets, buttonId) {
                     if (containerRunning) return;
 
+                    var i;
                     if (!inIframe) {
-                        var i;
-                        for (i = 0; i < ENVIRONMENTS.length; i++) {
-                            setContainerRow(
-                                ENVIRONMENTS[i].key,
-                                'NOT RUN',
-                                's-skip',
-                                'open this page through the container'
-                            );
+                        for (i = 0; i < targets.length; i++) {
+                            setContainerRow(targets[i].key, 'NOT RUN', 's-skip', 'open this page through the container');
                         }
                         return;
                     }
 
+                    var hasProd = false;
+                    for (i = 0; i < targets.length; i++) {
+                        if (targets[i].isProd) hasProd = true;
+                    }
+
                     containerRunning = true;
-                    setBusy('btnContainer', true);
+                    setBusy(buttonId, true);
                     setVerdict(
                         'v-pending',
-                        'ASKING THE CONTAINER TO POST /send-email...',
-                        'The container fetches its own OSP token and user id. No credential travels in this message.'
+                        hasProd
+                            ? 'ASKING THE CONTAINER TO POST /send-email ON PRODUCTION...'
+                            : 'ASKING THE CONTAINER TO POST /send-email...',
+                        hasProd
+                            ? 'This is production: a success sends a real e-mail and uses up the antispam slot for this creative.'
+                            : 'The container fetches its own OSP token and user id. No credential travels in this message.'
                     );
 
                     var at = 0;
                     function next() {
-                        if (at >= ENVIRONMENTS.length) {
+                        if (at >= targets.length) {
                             containerRunning = false;
-                            setBusy('btnContainer', false);
-                            decideContainer();
+                            setBusy(buttonId, false);
+                            decideContainer(targets);
                             return;
                         }
-                        var env = ENVIRONMENTS[at];
+                        var env = targets[at];
                         at++;
 
                         setContainerRow(env.key, 'RUNNING', 's-pending', 'waiting up to ' + CONTAINER_TIMEOUT_MS + ' ms');
 
                         requestContainerSend(env, function (data, elapsed) {
-                            var view = explainContainer(data, elapsed);
+                            var view = explainContainer(env, data, elapsed);
                             containerRowEls[env.key].result = data;
                             setContainerRow(env.key, view.text, view.cls, view.detail);
                             pushLog('container ' + env.name + ' -> ' + view.text);
@@ -1225,13 +1296,31 @@
                     next();
                 }
 
-                function decideContainer() {
-                    var staging = containerRowEls.staging ? containerRowEls.staging.result : null;
-                    var preprod = containerRowEls.preprod ? containerRowEls.preprod.result : null;
-                    var anyOk = (staging && staging.ok) || (preprod && preprod.ok);
-                    var anyReply = staging || preprod;
+                function decideContainer(targets) {
+                    var anyOk = false;
+                    var anyReply = false;
+                    var prodOk = false;
 
-                    if (anyOk) {
+                    var i;
+                    for (i = 0; i < targets.length; i++) {
+                        var row = containerRowEls[targets[i].key];
+                        var result = row ? row.result : null;
+                        if (!result) continue;
+                        anyReply = true;
+                        if (!result.ok) continue;
+                        anyOk = true;
+                        if (targets[i].isProd) prodOk = true;
+                    }
+
+                    if (prodOk) {
+                        setVerdict(
+                            'v-pass',
+                            'PRODUCTION: POST ACCEPTED - A REAL E-MAIL IS QUEUED',
+                            'click2email.samsungads.com accepted the job for the account signed into this TV. ' +
+                                'The antispam slot for this creative is now used, so a second press will be dropped by the limiter rather than resent. ' +
+                                'Whether the mail actually goes out is decided after the 200, in the service worker.'
+                        );
+                    } else if (anyOk) {
                         setVerdict(
                             'v-pass',
                             'CONTAINER: POST ACCEPTED AND READABLE',
@@ -1287,7 +1376,18 @@
                 function bindButtons() {
                     buttons = [
                         { el: document.getElementById('btnIframe'), run: runHttpChecks },
-                        { el: document.getElementById('btnContainer'), run: runContainerChecks }
+                        {
+                            el: document.getElementById('btnContainer'),
+                            run: function () {
+                                runContainer(ENVIRONMENTS, 'btnContainer');
+                            }
+                        },
+                        {
+                            el: document.getElementById('btnContainerProd'),
+                            run: function () {
+                                runContainer([PROD_TARGET], 'btnContainerProd');
+                            }
+                        }
                     ];
 
                     var i;
