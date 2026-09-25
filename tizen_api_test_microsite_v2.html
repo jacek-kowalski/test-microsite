@@ -46,6 +46,7 @@
                 margin-top: 8px;
                 font-size: 22px;
                 font-weight: normal;
+                white-space: pre-line;
             }
             .v-pending {
                 background: #2b3038;
@@ -137,7 +138,7 @@
                 font-size: 18px;
                 line-height: 1.5;
                 color: #cfd6dd;
-                height: 300px;
+                height: 230px;
                 overflow: hidden;
                 white-space: pre-wrap;
                 word-break: break-all;
@@ -188,6 +189,9 @@
                 'use strict';
 
                 var TIMEOUT_MS = 2000;
+                /* getOspAccessToken goes to the OSP server, so it needs far longer than the
+                   local handlers. The container gives up at 8000 ms; wait past that. */
+                var OSP_TIMEOUT_MS = 10000;
                 var LOG_PREFIX = '[BridgeProbe]';
                 var MAX_LOG_LINES = 8;
 
@@ -232,6 +236,26 @@
                         }
                     },
                     {
+                        key: 'osp',
+                        command: { getOspAccessToken: '' },
+                        label: "{ getOspAccessToken: '' }",
+                        meaning: 'getOspAccessToken handler (new)',
+                        timeoutMs: OSP_TIMEOUT_MS,
+                        match: function (d) {
+                            return d.type === 'ospAccessToken';
+                        },
+                        format: function (d) {
+                            return (
+                                'ok=' +
+                                d.ok +
+                                ' error=' +
+                                describe(d.error) +
+                                ' accessToken=' +
+                                describeSecret(d.accessToken)
+                            );
+                        }
+                    },
+                    {
                         key: 'getGuid',
                         command: { getGuid: '' },
                         label: "{ getGuid: '' }",
@@ -262,11 +286,20 @@
                 var logEl = document.getElementById('log');
 
                 var state = {};
+                var replies = {};
                 var rowEls = {};
-                var timer = null;
+                var timers = {};
                 var startedAt = 0;
                 var runId = 0;
                 var logLines = [];
+
+                function clearTimers() {
+                    var key;
+                    for (key in timers) {
+                        if (Object.prototype.hasOwnProperty.call(timers, key)) clearTimeout(timers[key]);
+                    }
+                    timers = {};
+                }
 
                 function describe(value) {
                     if (value === undefined) return '(absent)';
@@ -360,14 +393,15 @@
                     return data;
                 }
 
-                /* Strip the token before the raw reply reaches the screen or the TV log. */
+                /* Strip credentials before the raw reply reaches the screen or the TV log. */
                 function safeRaw(data) {
                     if (!data || typeof data !== 'object') return String(data);
+                    var secret = { authToken: true, accessToken: true };
                     var copy = {};
                     var k;
                     for (k in data) {
                         if (Object.prototype.hasOwnProperty.call(data, k)) {
-                            copy[k] = k === 'authToken' ? '<redacted>' : data[k];
+                            copy[k] = secret[k] && data[k] ? '<redacted>' : data[k];
                         }
                     }
                     return JSON.stringify(copy);
@@ -385,6 +419,7 @@
 
                         var elapsed = Date.now() - startedAt;
                         state[probe.key] = 'ok';
+                        replies[probe.key] = data;
                         setRow(probe.key, 'OK ' + elapsed + 'ms', 's-ok', probe.format(data));
                         pushLog('+' + elapsed + 'ms ' + safeRaw(data));
                         console.log(LOG_PREFIX + ' reply ' + probe.key + ' after ' + elapsed + 'ms');
@@ -407,35 +442,59 @@
 
                 function evaluate() {
                     if (pending() > 0) return;
-                    if (timer) {
-                        clearTimeout(timer);
-                        timer = null;
-                    }
+                    clearTimers();
                     decide();
+                }
+
+                function missingNames() {
+                    var names = [];
+                    if (state.ping !== 'ok') names.push('ping');
+                    if (state.ssoState !== 'ok') names.push('getSsoState');
+                    if (state.osp !== 'ok') names.push('getOspAccessToken');
+                    return names.join(', ');
+                }
+
+                /* The OSP token has two independent outcomes: the handler answering proves the
+                   build landed, and ok=true proves the credentials and sign-in state work. */
+                function ospNote() {
+                    if (state.osp !== 'ok') return '';
+                    var ospReply = replies.osp;
+                    if (ospReply && ospReply.ok) return '\nOSP token received - credentials and sign-in both work.';
+
+                    var err = ospReply ? String(ospReply.error) : '';
+                    var hint = 'OSP handler answered but no token: ' + (err || 'unknown') + '.';
+                    if (err === 'NoCredentials') hint += ' OSP_APP_ID / OSP_SECRET_KEY are empty in the build.';
+                    else if (err === 'InvalidStateError') hint += ' Sign in to the Samsung Account on this TV.';
+                    else if (err === 'SecurityError') hint += ' The sso.partner privilege was refused for this cert.';
+                    else if (err === 'NotSupportedError') hint += ' This device has no SSO support.';
+                    else if (err === 'Timeout') hint += ' The OSP server did not answer within 8 s.';
+                    return '\n' + hint;
                 }
 
                 function decide() {
                     var ping = state.ping === 'ok';
                     var sso = state.ssoState === 'ok';
+                    var osp = state.osp === 'ok';
                     var guid = state.getGuid === 'ok';
 
-                    if (ping && sso) {
+                    if (ping && sso && osp) {
                         setVerdict(
                             'v-pass',
-                            'PASS - both commits are on this TV',
-                            'ping and getSsoState both answered. The installed build contains 4060164 and 4407c6e.'
+                            'PASS - all three handlers are on this TV',
+                            'ping, getSsoState and getOspAccessToken all answered.' + ospNote()
                         );
-                    } else if (ping || sso) {
+                    } else if (ping || sso || osp) {
                         setVerdict(
                             'v-partial',
-                            'PARTIAL - only ' + (ping ? 'ping' : 'getSsoState') + ' answered',
-                            'One handler replied and the other did not. The installed build is between the two commits, or the missing handler failed at run time. Check the TV log.'
+                            'PARTIAL - missing: ' + missingNames(),
+                            'Some handlers replied and some did not. The installed build is older than the missing handler, or that handler failed at run time. Check the TV log.' +
+                                ospNote()
                         );
                     } else if (guid) {
                         setVerdict(
                             'v-fail',
                             'OLD BUILD - changes did NOT land',
-                            'The bridge is alive (getGuid answered) but it knows neither ping nor getSsoState. The TV still runs a build from before the two commits. Reinstall the .wgt.'
+                            'The bridge is alive (getGuid answered) but it knows none of ping, getSsoState or getOspAccessToken. The TV still runs a build from before those commits. Reinstall the .wgt.'
                         );
                     } else if (!inIframe) {
                         setVerdict(
@@ -459,7 +518,8 @@
                     startedAt = Date.now();
                     logLines = [];
                     logEl.textContent = '(none yet)';
-                    if (timer) clearTimeout(timer);
+                    clearTimers();
+                    replies = {};
 
                     var i;
                     for (i = 0; i < PROBES.length; i++) {
@@ -467,7 +527,11 @@
                         setRow(PROBES[i].key, 'PENDING', 's-pending', '-');
                     }
 
-                    setVerdict('v-pending', 'RUNNING...', 'Waiting up to ' + TIMEOUT_MS + ' ms for replies.');
+                    setVerdict(
+                        'v-pending',
+                        'RUNNING...',
+                        'Waiting up to ' + TIMEOUT_MS + ' ms, and ' + OSP_TIMEOUT_MS + ' ms for the OSP token.'
+                    );
 
                     if (!inIframe) {
                         for (i = 0; i < PROBES.length; i++) {
@@ -479,24 +543,28 @@
                     }
 
                     /* The container only accepts messages whose source is the iframe
-                       contentWindow, so the probe must come from this top level document. */
+                       contentWindow, so the probe must come from this top level document.
+                       Each probe gets its own deadline: the OSP call needs a network round
+                       trip, the rest answer locally. */
                     for (i = 0; i < PROBES.length; i++) {
-                        var payload = JSON.stringify(PROBES[i].command);
+                        var probe = PROBES[i];
+                        var payload = JSON.stringify(probe.command);
                         console.log(LOG_PREFIX + ' send ' + payload);
                         window.parent.postMessage(payload, '*');
+                        timers[probe.key] = setTimeout(makeTimeout(probe, myRun), probe.timeoutMs || TIMEOUT_MS);
                     }
+                }
 
-                    timer = setTimeout(function () {
+                function makeTimeout(probe, myRun) {
+                    var limit = probe.timeoutMs || TIMEOUT_MS;
+                    return function () {
                         if (myRun !== runId) return;
-                        var j;
-                        for (j = 0; j < PROBES.length; j++) {
-                            if (state[PROBES[j].key] === 'pending') {
-                                state[PROBES[j].key] = 'timeout';
-                                setRow(PROBES[j].key, 'TIMEOUT', 's-timeout', 'no reply in ' + TIMEOUT_MS + ' ms');
-                            }
-                        }
-                        decide();
-                    }, TIMEOUT_MS);
+                        if (state[probe.key] !== 'pending') return;
+                        state[probe.key] = 'timeout';
+                        setRow(probe.key, 'TIMEOUT', 's-timeout', 'no reply in ' + limit + ' ms');
+                        console.log(LOG_PREFIX + ' timeout ' + probe.key);
+                        evaluate();
+                    };
                 }
 
                 window.addEventListener('message', onMessage, false);
