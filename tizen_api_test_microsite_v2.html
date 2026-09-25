@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=1920, height=1080, initial-scale=1" />
-        <title>Container bridge probe</title>
+        <title>Click 2 Email Test Microsite</title>
         <style>
             /* Tizen viewport is always 1920x1080, so px sizes are safe. */
             * {
@@ -21,37 +21,69 @@
                 overflow: hidden;
             }
             #app {
-                padding: 26px 56px;
+                padding: 24px 56px;
+            }
+            .topbar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 12px;
             }
             h1 {
-                margin: 0 0 4px 0;
-                font-size: 34px;
+                margin: 0;
+                font-size: 32px;
                 font-weight: bold;
             }
             .sub {
-                margin: 0 0 14px 0;
-                font-size: 19px;
+                margin: 2px 0 0 0;
+                font-size: 17px;
                 color: #9aa4ad;
             }
+            .actions {
+                display: flex;
+            }
+            /* Red action buttons. Both send a real request, so they are never triggered
+               automatically - opening the microsite must not e-mail anyone. */
+            .btn {
+                margin-left: 16px;
+                padding: 13px 24px;
+                font-family: inherit;
+                font-size: 20px;
+                font-weight: bold;
+                color: #fff;
+                background: #b3261e;
+                border: 3px solid #5c1410;
+                border-radius: 8px;
+                cursor: pointer;
+            }
+            /* The TV has no pointer, so the focused button must be obvious from across a room. */
+            .btn.focused {
+                background: #e8453a;
+                border-color: #ffffff;
+                box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.25);
+            }
+            .btn.busy {
+                opacity: 0.45;
+            }
             h2 {
-                margin: 0 0 6px 0;
-                font-size: 17px;
+                margin: 0 0 4px 0;
+                font-size: 16px;
                 text-transform: uppercase;
                 letter-spacing: 1px;
                 color: #9aa4ad;
             }
             #verdict {
-                padding: 12px 20px;
-                margin-bottom: 14px;
+                padding: 10px 18px;
+                margin-bottom: 12px;
                 border-radius: 8px;
-                font-size: 26px;
+                font-size: 24px;
                 font-weight: bold;
-                line-height: 1.25;
+                line-height: 1.2;
             }
             #verdict .why {
                 display: block;
-                margin-top: 6px;
-                font-size: 18px;
+                margin-top: 5px;
+                font-size: 17px;
                 font-weight: normal;
                 white-space: pre-line;
             }
@@ -74,18 +106,18 @@
             table {
                 width: 100%;
                 border-collapse: collapse;
-                margin-bottom: 14px;
+                margin-bottom: 10px;
             }
             th,
             td {
                 text-align: left;
-                padding: 7px 14px;
-                font-size: 19px;
+                padding: 5px 12px;
+                font-size: 17px;
                 border-bottom: 1px solid #23282f;
                 vertical-align: top;
             }
             th {
-                font-size: 15px;
+                font-size: 14px;
                 text-transform: uppercase;
                 letter-spacing: 1px;
                 color: #9aa4ad;
@@ -93,20 +125,20 @@
             td.cmd {
                 width: 330px;
                 font-family: 'Courier New', monospace;
-                font-size: 20px;
+                font-size: 18px;
             }
             td.state {
-                width: 200px;
+                width: 190px;
                 font-weight: bold;
             }
             td.meaning {
-                width: 350px;
+                width: 330px;
                 color: #9aa4ad;
-                font-size: 17px;
+                font-size: 15px;
             }
             td.detail {
                 font-family: 'Courier New', monospace;
-                font-size: 17px;
+                font-size: 15px;
                 color: #cfd6dd;
                 word-break: break-all;
             }
@@ -138,21 +170,21 @@
             }
             .panel pre {
                 margin: 0;
-                padding: 12px;
+                padding: 10px;
                 background: #171a1f;
                 border-radius: 8px;
                 font-family: 'Courier New', monospace;
-                font-size: 16px;
-                line-height: 1.45;
+                font-size: 15px;
+                line-height: 1.4;
                 color: #cfd6dd;
-                height: 132px;
+                height: 96px;
                 overflow: hidden;
                 white-space: pre-wrap;
                 word-break: break-all;
             }
             .hint {
-                margin: 14px 0 0 0;
-                font-size: 18px;
+                margin: 10px 0 0 0;
+                font-size: 16px;
                 color: #9aa4ad;
             }
             .hint b {
@@ -162,8 +194,16 @@
     </head>
     <body>
         <div id="app">
-            <h1>Container bridge probe</h1>
-            <p class="sub" id="sub">Microsite &rarr; container postMessage test, then POST /send-email from the iframe</p>
+            <div class="topbar">
+                <div>
+                    <h1>Click 2 Email Test Microsite</h1>
+                    <p class="sub">Container bridge probe, then POST /send-email from either layer</p>
+                </div>
+                <div class="actions">
+                    <button type="button" class="btn" id="btnIframe">Send email from iframe</button>
+                    <button type="button" class="btn" id="btnContainer">Send email from container</button>
+                </div>
+            </div>
 
             <div id="verdict" class="v-pending">RUNNING&hellip;</div>
 
@@ -180,7 +220,7 @@
                 <tbody id="rows"></tbody>
             </table>
 
-            <h2 id="sendHead">2 &ndash; POST /send-email from the iframe (staging + pre-prod, never prod)</h2>
+            <h2>2 &ndash; POST /send-email from the iframe (layer 3)</h2>
             <table>
                 <thead>
                     <tr>
@@ -193,6 +233,19 @@
                 <tbody id="sendRows"></tbody>
             </table>
 
+            <h2>3 &ndash; POST /send-email from the container (layer 2, via sendEmail bridge command)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Target</th>
+                        <th>Result</th>
+                        <th>Checks</th>
+                        <th>Detail</th>
+                    </tr>
+                </thead>
+                <tbody id="containerRows"></tbody>
+            </table>
+
             <div class="panels">
                 <div class="panel">
                     <pre id="context"></pre>
@@ -203,9 +256,9 @@
             </div>
 
             <p class="hint">
-                Section 2 runs once by itself after section 1 settles &mdash; it posts a real request with the OSP token,
-                so a fully working staging call does deliver an e-mail. <b>OK / ENTER</b> = re-run section 1
-                &nbsp;&middot;&nbsp; <b>RIGHT arrow</b> = re-run section 2
+                <b>LEFT / RIGHT</b> = choose a button &nbsp;&middot;&nbsp; <b>OK / ENTER</b> = press it
+                &nbsp;&middot;&nbsp; <b>DOWN</b> = re-run section 1. Both buttons send a real request with a real OSP
+                token, so nothing in sections 2 and 3 starts on its own.
             </p>
         </div>
 
@@ -219,8 +272,11 @@
                    local handlers. The container gives up at 8000 ms; wait past that. */
                 var OSP_TIMEOUT_MS = 10000;
                 var HTTP_TIMEOUT_MS = 15000;
+                /* The container does its own OSP token call (up to 8 s) and then the POST
+                   (up to 15 s), so this deadline has to sit above the sum of both. */
+                var CONTAINER_TIMEOUT_MS = 30000;
                 var LOG_PREFIX = '[BridgeProbe]';
-                var MAX_LOG_LINES = 6;
+                var MAX_LOG_LINES = 5;
 
                 /* Ad identifiers under test. */
                 var CREATIVE_ID = 621206;
@@ -229,7 +285,8 @@
                 /* Production is deliberately absent from this list. click2email-prod.samsungads.com
                    and click2email.samsungads.com must never be called from a test page: a successful
                    /send-email there mails a real subscriber and burns the antispam slot for that
-                   address. Both hosts below are non-production deployments of the same chart. */
+                   address. Both hosts below are non-production deployments of the same chart.
+                   `key` must match a key of SEND_EMAIL_ENDPOINTS in the container. */
                 var ENVIRONMENTS = [
                     { key: 'staging', name: 'staging', base: 'https://click2email-staging.samsungads.com' },
                     { key: 'preprod', name: 'pre-prod', base: 'https://click2email-pre-prod.samsungads.com' }
@@ -343,6 +400,7 @@
 
                 var rowsEl = document.getElementById('rows');
                 var sendRowsEl = document.getElementById('sendRows');
+                var containerRowsEl = document.getElementById('containerRows');
                 var verdictEl = document.getElementById('verdict');
                 var contextEl = document.getElementById('context');
                 var logEl = document.getElementById('log');
@@ -358,11 +416,15 @@
                 var sendRowEls = {};
                 var sendState = {};
                 var httpRunning = false;
-                /* Key events do not always reach a cross-origin iframe document, so section 2
-                   must not depend on the remote. It starts itself once, after the bridge probes
-                   settle; RIGHT only re-runs it. */
-                var httpAutoStarted = false;
-                var AUTO_START_DELAY_MS = 1500;
+
+                var containerRowEls = {};
+                var containerRunning = false;
+                /* Set while one sendEmail command is in flight, so the reply can be routed back
+                   to the step that asked for it. */
+                var containerWaiter = null;
+
+                var buttons = [];
+                var focusIndex = 0;
 
                 function clearTimers() {
                     var key;
@@ -413,6 +475,26 @@
                     store[key] = { state: st, detail: detail };
                 }
 
+                function setCells(store, key, stateText, stateClass, detailText) {
+                    var row = store[key];
+                    if (!row) return;
+                    row.state.className = 'state ' + stateClass;
+                    row.state.textContent = stateText;
+                    row.detail.textContent = detailText;
+                }
+
+                function setRow(key, stateText, stateClass, detailText) {
+                    setCells(rowEls, key, stateText, stateClass, detailText);
+                }
+
+                function setSendRow(envKey, style, stateText, stateClass, detailText) {
+                    setCells(sendRowEls, envKey + ':' + style, stateText, stateClass, detailText);
+                }
+
+                function setContainerRow(envKey, stateText, stateClass, detailText) {
+                    setCells(containerRowEls, envKey, stateText, stateClass, detailText);
+                }
+
                 function buildRows() {
                     var i;
                     for (i = 0; i < PROBES.length; i++) {
@@ -422,34 +504,33 @@
                     var e, c;
                     for (e = 0; e < ENVIRONMENTS.length; e++) {
                         for (c = 0; c < HTTP_CHECKS.length; c++) {
-                            var env = ENVIRONMENTS[e];
-                            var check = HTTP_CHECKS[c];
                             makeRow(
                                 sendRowsEl,
-                                env.key + ':' + check.style,
-                                env.name + '  ' + check.label,
-                                check.meaning,
+                                ENVIRONMENTS[e].key + ':' + HTTP_CHECKS[c].style,
+                                ENVIRONMENTS[e].name + '  ' + HTTP_CHECKS[c].label,
+                                HTTP_CHECKS[c].meaning,
                                 sendRowEls
                             );
-                            setSendRow(env.key, check.style, 'QUEUED', 's-skip', 'starts after the bridge probes');
+                            setSendRow(
+                                ENVIRONMENTS[e].key,
+                                HTTP_CHECKS[c].style,
+                                'NOT RUN',
+                                's-skip',
+                                'press "Send email from iframe"'
+                            );
                         }
                     }
-                }
 
-                function setRow(key, stateText, stateClass, detailText) {
-                    var row = rowEls[key];
-                    if (!row) return;
-                    row.state.className = 'state ' + stateClass;
-                    row.state.textContent = stateText;
-                    row.detail.textContent = detailText;
-                }
-
-                function setSendRow(envKey, style, stateText, stateClass, detailText) {
-                    var row = sendRowEls[envKey + ':' + style];
-                    if (!row) return;
-                    row.state.className = 'state ' + stateClass;
-                    row.state.textContent = stateText;
-                    row.detail.textContent = detailText;
+                    for (e = 0; e < ENVIRONMENTS.length; e++) {
+                        makeRow(
+                            containerRowsEl,
+                            ENVIRONMENTS[e].key,
+                            ENVIRONMENTS[e].name + "  { sendEmail: '" + ENVIRONMENTS[e].key + "' }",
+                            'container posts with its own token',
+                            containerRowEls
+                        );
+                        setContainerRow(ENVIRONMENTS[e].key, 'NOT RUN', 's-skip', 'press "Send email from container"');
+                    }
                 }
 
                 function setVerdict(cls, text, why) {
@@ -507,6 +588,19 @@
                 function onMessage(event) {
                     var data = parse(event.data);
                     if (!data || typeof data !== 'object') return;
+
+                    /* Section 3 replies are routed by env, not by probe table order, because the
+                       container answers one sendEmail command at a time. */
+                    if (data.type === 'sendEmailResult') {
+                        if (containerWaiter && containerWaiter.env === data.env) {
+                            var waiter = containerWaiter;
+                            containerWaiter = null;
+                            waiter.done(data);
+                        } else {
+                            pushLog('late sendEmailResult ' + safeRaw(data));
+                        }
+                        return;
+                    }
 
                     var i;
                     for (i = 0; i < PROBES.length; i++) {
@@ -580,7 +674,7 @@
                             'PASS - all three handlers are on this TV',
                             'ping, getSsoState and getOspAccessToken all answered.' +
                                 ospNote() +
-                                '\nThe /send-email test starts by itself in a moment.'
+                                '\nUse the red buttons to POST /send-email. Nothing is sent until you do.'
                         );
                     } else if (ping || sso || osp) {
                         setVerdict(
@@ -609,11 +703,6 @@
                         );
                     }
                     console.log(LOG_PREFIX + ' verdict: ' + verdictEl.textContent);
-
-                    if (!httpAutoStarted && inIframe) {
-                        httpAutoStarted = true;
-                        setTimeout(runHttpChecks, AUTO_START_DELAY_MS);
-                    }
                 }
 
                 function run() {
@@ -671,7 +760,7 @@
                     };
                 }
 
-                /* ---------- part 2: POST /send-email from inside the iframe ---------- */
+                /* ---------- section 2: POST /send-email from inside the iframe ---------- */
 
                 /* Samsung Account is asked for the email with `x-osp-userId: <user_id>` and
                    `Authorization: Bearer <access_token>`, so user_id must be the OSP user id from
@@ -837,11 +926,11 @@
                     var user = resolveUserId();
 
                     if (!token) {
-                        markAllSend('SKIPPED', 's-skip', 'no OSP access token - fix row 3 first');
+                        markAllSend('SKIPPED', 's-skip', 'no OSP access token - fix row 3 of section 1');
                         setVerdict(
                             'v-partial',
-                            'SEND-EMAIL SKIPPED - no OSP token',
-                            'getOspAccessToken returned no token, so there is nothing to authenticate /send-email with. Fix that row, then press RIGHT again.'
+                            'IFRAME SEND SKIPPED - no OSP token',
+                            'getOspAccessToken returned no token, so there is nothing to authenticate /send-email with. Fix that row, then press the button again.'
                         );
                         return;
                     }
@@ -849,19 +938,20 @@
                         markAllSend('SKIPPED', 's-skip', 'no OSP user id - getSsoState gave neither uid nor guid');
                         setVerdict(
                             'v-partial',
-                            'SEND-EMAIL SKIPPED - no user_id',
+                            'IFRAME SEND SKIPPED - no user_id',
                             'Samsung Account needs x-osp-userId. getSsoState returned no uid and no guid.'
                         );
                         return;
                     }
 
                     httpRunning = true;
+                    setBusy('btnIframe', true);
                     var body = buildBody(token, user.value);
 
                     /* The body carries a bearer token, so only its shape is ever printed. */
                     console.log(
                         LOG_PREFIX +
-                            ' send-email body: creative_id=' +
+                            ' iframe send-email: creative_id=' +
                             CREATIVE_ID +
                             ' flight_id=' +
                             FLIGHT_ID +
@@ -872,7 +962,7 @@
                     );
                     setVerdict(
                         'v-pending',
-                        'POSTING /send-email...',
+                        'POSTING /send-email FROM THE IFRAME...',
                         'user_id from ' + user.source + ', access_token ' + describeSecret(token) + '. Prod is not called.'
                     );
 
@@ -888,6 +978,7 @@
                     function next() {
                         if (at >= queue.length) {
                             httpRunning = false;
+                            setBusy('btnIframe', false);
                             decideHttp(user);
                             return;
                         }
@@ -905,7 +996,13 @@
                                 if (outcome === 'load') {
                                     setSendRow(env.key, style, 'OK ' + elapsed + 'ms', 's-ok', 'HTTP 200 from /ready');
                                 } else if (outcome === 'timeout') {
-                                    setSendRow(env.key, style, 'TIMEOUT', 's-timeout', 'no answer in ' + HTTP_TIMEOUT_MS + ' ms');
+                                    setSendRow(
+                                        env.key,
+                                        style,
+                                        'TIMEOUT',
+                                        's-timeout',
+                                        'no answer in ' + HTTP_TIMEOUT_MS + ' ms'
+                                    );
                                 } else {
                                     setSendRow(
                                         env.key,
@@ -925,10 +1022,10 @@
                             sendState[stateKey] = outcome;
                             var view = explainPost(env, style, outcome, status, elapsed);
                             setSendRow(env.key, style, view.text, view.cls, view.detail);
-                            pushLog(env.name + ' ' + style + ' -> ' + view.text);
+                            pushLog('iframe ' + env.name + ' ' + style + ' -> ' + view.text);
                             console.log(
                                 LOG_PREFIX +
-                                    ' send-email ' +
+                                    ' iframe send-email ' +
                                     env.key +
                                     ' ' +
                                     style +
@@ -957,20 +1054,19 @@
                 }
 
                 function decideHttp(user) {
-                    var stagingSent =
-                        sendState['staging:text'] === 'load' || sendState['staging:reach'] === 'load';
+                    var stagingSent = sendState['staging:text'] === 'load' || sendState['staging:reach'] === 'load';
                     var anyReadable = sendState['staging:text'] === 'load' || sendState['preprod:text'] === 'load';
 
                     if (anyReadable) {
                         setVerdict(
                             'v-pass',
-                            'SEND-EMAIL REACHED AND READABLE',
+                            'IFRAME: REACHED AND READABLE',
                             'The service answered and the browser let this page read the reply, so CORS is configured. Remember 200 only means "accepted for async processing".'
                         );
                     } else if (stagingSent) {
                         setVerdict(
                             'v-partial',
-                            'DELIVERED, REPLY NOT READABLE',
+                            'IFRAME: DELIVERED, REPLY NOT READABLE',
                             'The simple-request POST left the TV and staging accepted it, but /send-email sends no Access-Control-Allow-Origin, so the iframe cannot read the answer. ' +
                                 'The JSON POST is refused earlier still, at the OPTIONS preflight.\n' +
                                 'Whether the OSP token worked can only be seen in the service log (user_id from ' +
@@ -980,11 +1076,214 @@
                     } else {
                         setVerdict(
                             'v-fail',
-                            'SEND-EMAIL DID NOT REACH THE SERVICE',
+                            'IFRAME: DID NOT REACH THE SERVICE',
                             'Neither environment answered /ready from this TV. Check that the TV network can resolve and reach click2email-*.samsungads.com.'
                         );
                     }
-                    console.log(LOG_PREFIX + ' send-email verdict: ' + verdictEl.textContent);
+                    console.log(LOG_PREFIX + ' iframe verdict: ' + verdictEl.textContent);
+                }
+
+                /* ---------- section 3: POST /send-email from the container ---------- */
+
+                /* The command names an environment key, never a URL: the container attaches its
+                   own OSP token, so it must not let this page choose the destination. It also
+                   fetches the token and the OSP user id itself - nothing credential-shaped
+                   travels in this message, which is the whole point of testing this layer. */
+                function requestContainerSend(env, done) {
+                    var settled = false;
+                    var started = Date.now();
+
+                    var timer = setTimeout(function () {
+                        if (settled) return;
+                        settled = true;
+                        containerWaiter = null;
+                        done(null, Date.now() - started);
+                    }, CONTAINER_TIMEOUT_MS);
+
+                    containerWaiter = {
+                        env: env.key,
+                        done: function (data) {
+                            if (settled) return;
+                            settled = true;
+                            clearTimeout(timer);
+                            done(data, Date.now() - started);
+                        }
+                    };
+
+                    var payload = JSON.stringify({
+                        sendEmail: { env: env.key, flightId: FLIGHT_ID, creativeId: CREATIVE_ID }
+                    });
+                    console.log(LOG_PREFIX + ' send ' + payload);
+                    window.parent.postMessage(payload, '*');
+                }
+
+                function explainContainer(data, elapsed) {
+                    if (!data) {
+                        return {
+                            text: 'NO REPLY',
+                            cls: 's-timeout',
+                            detail:
+                                'no sendEmailResult in ' +
+                                elapsed +
+                                ' ms - this build has no sendEmail handler, or it never answered'
+                        };
+                    }
+
+                    if (data.ok) {
+                        return {
+                            text: 'OK ' + data.status + ' ' + data.ms + 'ms',
+                            cls: 's-ok',
+                            detail: 'container read the reply - accepted for async processing, token verdict is in the service log'
+                        };
+                    }
+
+                    var err = String(data.error || 'unknown');
+                    var detail = 'error=' + err + ' status=' + data.status + ' after ' + data.ms + 'ms';
+
+                    if (err === 'TypeError')
+                        detail += ' - request never completed: CORS refusal or host down (indistinguishable)';
+                    else if (err === 'AbortError') detail += ' - container timed out at 15 s';
+                    else if (err === 'HttpStatus') detail += ' - service answered, but not 2xx';
+                    else if (err === 'UnknownEnv') detail += ' - env key is not in the container allowlist';
+                    else if (err === 'NoUserId') detail += ' - SSO returned neither uid nor guid';
+                    else if (err === 'BadIds') detail += ' - flightId / creativeId rejected';
+                    else detail += ' - the container could not get an OSP token';
+
+                    return { text: 'FAIL', cls: 's-timeout', detail: detail };
+                }
+
+                function runContainerChecks() {
+                    if (containerRunning) return;
+
+                    if (!inIframe) {
+                        var i;
+                        for (i = 0; i < ENVIRONMENTS.length; i++) {
+                            setContainerRow(
+                                ENVIRONMENTS[i].key,
+                                'NOT RUN',
+                                's-skip',
+                                'open this page through the container'
+                            );
+                        }
+                        return;
+                    }
+
+                    containerRunning = true;
+                    setBusy('btnContainer', true);
+                    setVerdict(
+                        'v-pending',
+                        'ASKING THE CONTAINER TO POST /send-email...',
+                        'The container fetches its own OSP token and user id. No credential travels in this message.'
+                    );
+
+                    var at = 0;
+                    function next() {
+                        if (at >= ENVIRONMENTS.length) {
+                            containerRunning = false;
+                            setBusy('btnContainer', false);
+                            decideContainer();
+                            return;
+                        }
+                        var env = ENVIRONMENTS[at];
+                        at++;
+
+                        setContainerRow(env.key, 'RUNNING', 's-pending', 'waiting up to ' + CONTAINER_TIMEOUT_MS + ' ms');
+
+                        requestContainerSend(env, function (data, elapsed) {
+                            var view = explainContainer(data, elapsed);
+                            containerRowEls[env.key].result = data;
+                            setContainerRow(env.key, view.text, view.cls, view.detail);
+                            pushLog('container ' + env.name + ' -> ' + view.text);
+                            console.log(
+                                LOG_PREFIX + ' container send-email ' + env.key + ' -> ' + view.text + ' (' + elapsed + 'ms)'
+                            );
+                            next();
+                        });
+                    }
+
+                    next();
+                }
+
+                function decideContainer() {
+                    var staging = containerRowEls.staging ? containerRowEls.staging.result : null;
+                    var preprod = containerRowEls.preprod ? containerRowEls.preprod.result : null;
+                    var anyOk = (staging && staging.ok) || (preprod && preprod.ok);
+                    var anyReply = staging || preprod;
+
+                    if (anyOk) {
+                        setVerdict(
+                            'v-pass',
+                            'CONTAINER: POST ACCEPTED AND READABLE',
+                            'The container called /send-email with its own OSP token and read the reply, so CORS does not restrict layer 2. ' +
+                                'A 200 still only means the job was accepted - check the service log for the token verdict.'
+                        );
+                    } else if (anyReply) {
+                        setVerdict(
+                            'v-partial',
+                            'CONTAINER: HANDLER ANSWERED, CALL FAILED',
+                            'The sendEmail handler exists and replied, but the POST did not succeed. Read the error in the table, then the TV log for [MicrositeBridge][handleSendEmail].'
+                        );
+                    } else {
+                        setVerdict(
+                            'v-fail',
+                            'CONTAINER: NO sendEmailResult',
+                            'The container never answered. This build has no sendEmail handler - reinstall the .wgt.'
+                        );
+                    }
+                    console.log(LOG_PREFIX + ' container verdict: ' + verdictEl.textContent);
+                }
+
+                /* ---------- remote control ---------- */
+
+                function setBusy(id, busy) {
+                    var i;
+                    for (i = 0; i < buttons.length; i++) {
+                        if (buttons[i].el.id !== id) continue;
+                        buttons[i].el.className = 'btn' + (busy ? ' busy' : '') + (focusIndex === i ? ' focused' : '');
+                    }
+                }
+
+                function setFocus(index) {
+                    if (index < 0) index = 0;
+                    if (index > buttons.length - 1) index = buttons.length - 1;
+                    focusIndex = index;
+
+                    var i;
+                    for (i = 0; i < buttons.length; i++) {
+                        var busy = buttons[i].el.className.indexOf('busy') !== -1;
+                        buttons[i].el.className = 'btn' + (busy ? ' busy' : '') + (i === focusIndex ? ' focused' : '');
+                    }
+                    /* focus() also makes ENTER work through the browser's own default action,
+                       which matters in the preview system where these are real buttons. */
+                    try {
+                        buttons[focusIndex].el.focus();
+                    } catch (e) {
+                        /* some firmware refuses focus() on a non-visible element; the class is
+                           what the user actually sees, so this is not worth failing over */
+                    }
+                }
+
+                function bindButtons() {
+                    buttons = [
+                        { el: document.getElementById('btnIframe'), run: runHttpChecks },
+                        { el: document.getElementById('btnContainer'), run: runContainerChecks }
+                    ];
+
+                    var i;
+                    for (i = 0; i < buttons.length; i++) {
+                        (function (index) {
+                            buttons[index].el.addEventListener(
+                                'click',
+                                function () {
+                                    setFocus(index);
+                                    buttons[index].run();
+                                },
+                                false
+                            );
+                        })(i);
+                    }
+
+                    setFocus(0);
                 }
 
                 window.addEventListener('message', onMessage, false);
@@ -992,15 +1291,22 @@
                 document.addEventListener(
                     'keydown',
                     function (event) {
-                        /* 13 = OK / ENTER, 39 = RIGHT on the Samsung remote. The network test is
-                           on its own key because it can make staging send a real e-mail. */
-                        if (event.keyCode === 13) run();
-                        else if (event.keyCode === 39) runHttpChecks();
+                        /* Samsung remote: 13 = OK/ENTER, 37/39 = LEFT/RIGHT, 40 = DOWN.
+                           ENTER presses the focused button instead of re-running section 1,
+                           because both buttons send a real request and must be deliberate. */
+                        if (event.keyCode === 37) setFocus(focusIndex - 1);
+                        else if (event.keyCode === 39) setFocus(focusIndex + 1);
+                        else if (event.keyCode === 13) buttons[focusIndex].run();
+                        else if (event.keyCode === 40) run();
+                        else return;
+
+                        event.preventDefault();
                     },
                     false
                 );
 
                 buildRows();
+                bindButtons();
                 renderContext();
                 console.log(LOG_PREFIX + ' loaded, inIframe=' + inIframe + ' href=' + window.location.href);
                 run();
