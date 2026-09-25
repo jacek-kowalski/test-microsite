@@ -1315,10 +1315,11 @@
                     if (prodOk) {
                         setVerdict(
                             'v-pass',
-                            'PRODUCTION: POST ACCEPTED - A REAL E-MAIL IS QUEUED',
+                            'PRODUCTION: POST ACCEPTED - REAL SEND ATTEMPTED',
                             'click2email.samsungads.com accepted the job for the account signed into this TV. ' +
-                                'The antispam slot for this creative is now used, so a second press will be dropped by the limiter rather than resent. ' +
-                                'Whether the mail actually goes out is decided after the 200, in the service worker.'
+                                'The 200 arrives before the worker resolves the e-mail address, so it reports nothing about the outcome - read the service log for the token verdict. ' +
+                                'The antispam slot is consumed only after that lookup succeeds, so a press that failed there costs nothing and can be repeated; ' +
+                                'a slot that was used is reset with the service GET /limiter-override?flight_id=.'
                         );
                     } else if (anyOk) {
                         setVerdict(
