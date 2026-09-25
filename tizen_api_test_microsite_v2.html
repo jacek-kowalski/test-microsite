@@ -21,30 +21,37 @@
                 overflow: hidden;
             }
             #app {
-                padding: 48px 72px;
+                padding: 26px 56px;
             }
             h1 {
-                margin: 0 0 8px 0;
-                font-size: 42px;
+                margin: 0 0 4px 0;
+                font-size: 34px;
                 font-weight: bold;
             }
             .sub {
-                margin: 0 0 24px 0;
-                font-size: 22px;
+                margin: 0 0 14px 0;
+                font-size: 19px;
+                color: #9aa4ad;
+            }
+            h2 {
+                margin: 0 0 6px 0;
+                font-size: 17px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
                 color: #9aa4ad;
             }
             #verdict {
-                padding: 20px 28px;
-                margin-bottom: 28px;
-                border-radius: 10px;
-                font-size: 34px;
+                padding: 12px 20px;
+                margin-bottom: 14px;
+                border-radius: 8px;
+                font-size: 26px;
                 font-weight: bold;
                 line-height: 1.25;
             }
             #verdict .why {
                 display: block;
-                margin-top: 8px;
-                font-size: 22px;
+                margin-top: 6px;
+                font-size: 18px;
                 font-weight: normal;
                 white-space: pre-line;
             }
@@ -67,39 +74,39 @@
             table {
                 width: 100%;
                 border-collapse: collapse;
-                margin-bottom: 28px;
+                margin-bottom: 14px;
             }
             th,
             td {
                 text-align: left;
-                padding: 12px 16px;
-                font-size: 22px;
+                padding: 7px 14px;
+                font-size: 19px;
                 border-bottom: 1px solid #23282f;
                 vertical-align: top;
             }
             th {
-                font-size: 18px;
+                font-size: 15px;
                 text-transform: uppercase;
                 letter-spacing: 1px;
                 color: #9aa4ad;
             }
             td.cmd {
-                width: 320px;
+                width: 330px;
                 font-family: 'Courier New', monospace;
-                font-size: 24px;
+                font-size: 20px;
             }
             td.state {
-                width: 220px;
+                width: 200px;
                 font-weight: bold;
             }
             td.meaning {
-                width: 420px;
+                width: 350px;
                 color: #9aa4ad;
-                font-size: 19px;
+                font-size: 17px;
             }
             td.detail {
                 font-family: 'Courier New', monospace;
-                font-size: 19px;
+                font-size: 17px;
                 color: #cfd6dd;
                 word-break: break-all;
             }
@@ -115,48 +122,52 @@
             .s-skip {
                 color: #9aa4ad;
             }
+            /* "the request left the TV but the reply is unreadable" is neither pass nor fail */
+            .s-sent {
+                color: #60a5fa;
+            }
+            .s-block {
+                color: #fbbf24;
+            }
             .panels {
                 display: flex;
             }
             .panel {
                 flex: 1 1 50%;
-                padding-right: 40px;
-            }
-            .panel h2 {
-                margin: 0 0 10px 0;
-                font-size: 20px;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-                color: #9aa4ad;
+                padding-right: 36px;
             }
             .panel pre {
                 margin: 0;
-                padding: 16px;
+                padding: 12px;
                 background: #171a1f;
                 border-radius: 8px;
                 font-family: 'Courier New', monospace;
-                font-size: 18px;
-                line-height: 1.5;
+                font-size: 16px;
+                line-height: 1.45;
                 color: #cfd6dd;
-                height: 230px;
+                height: 132px;
                 overflow: hidden;
                 white-space: pre-wrap;
                 word-break: break-all;
             }
             .hint {
-                margin: 24px 0 0 0;
-                font-size: 20px;
+                margin: 14px 0 0 0;
+                font-size: 18px;
                 color: #9aa4ad;
+            }
+            .hint b {
+                color: #e9ecef;
             }
         </style>
     </head>
     <body>
         <div id="app">
             <h1>Container bridge probe</h1>
-            <p class="sub" id="sub">Microsite &rarr; container postMessage test</p>
+            <p class="sub" id="sub">Microsite &rarr; container postMessage test, then POST /send-email from the iframe</p>
 
             <div id="verdict" class="v-pending">RUNNING&hellip;</div>
 
+            <h2>1 &ndash; bridge handlers (postMessage)</h2>
             <table>
                 <thead>
                     <tr>
@@ -169,18 +180,33 @@
                 <tbody id="rows"></tbody>
             </table>
 
+            <h2 id="sendHead">2 &ndash; POST /send-email from the iframe (staging + pre-prod, never prod)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Target</th>
+                        <th>Result</th>
+                        <th>Checks</th>
+                        <th>Detail</th>
+                    </tr>
+                </thead>
+                <tbody id="sendRows"></tbody>
+            </table>
+
             <div class="panels">
                 <div class="panel">
-                    <h2>Page context</h2>
                     <pre id="context"></pre>
                 </div>
                 <div class="panel">
-                    <h2>Raw messages received</h2>
                     <pre id="log">(none yet)</pre>
                 </div>
             </div>
 
-            <p class="hint">Press OK / ENTER on the remote to run the probes again.</p>
+            <p class="hint">
+                Section 2 runs once by itself after section 1 settles &mdash; it posts a real request with the OSP token,
+                so a fully working staging call does deliver an e-mail. <b>OK / ENTER</b> = re-run section 1
+                &nbsp;&middot;&nbsp; <b>RIGHT arrow</b> = re-run section 2
+            </p>
         </div>
 
         <script>
@@ -192,8 +218,22 @@
                 /* getOspAccessToken goes to the OSP server, so it needs far longer than the
                    local handlers. The container gives up at 8000 ms; wait past that. */
                 var OSP_TIMEOUT_MS = 10000;
+                var HTTP_TIMEOUT_MS = 15000;
                 var LOG_PREFIX = '[BridgeProbe]';
-                var MAX_LOG_LINES = 8;
+                var MAX_LOG_LINES = 6;
+
+                /* Ad identifiers under test. */
+                var CREATIVE_ID = 621206;
+                var FLIGHT_ID = 637161;
+
+                /* Production is deliberately absent from this list. click2email-prod.samsungads.com
+                   and click2email.samsungads.com must never be called from a test page: a successful
+                   /send-email there mails a real subscriber and burns the antispam slot for that
+                   address. Both hosts below are non-production deployments of the same chart. */
+                var ENVIRONMENTS = [
+                    { key: 'staging', name: 'staging', base: 'https://click2email-staging.samsungads.com' },
+                    { key: 'preprod', name: 'pre-prod', base: 'https://click2email-pre-prod.samsungads.com' }
+                ];
 
                 /* Boot data arrives in window.name as JSON. Read it before anything else. */
                 var bootName = window.name;
@@ -239,7 +279,7 @@
                         key: 'osp',
                         command: { getOspAccessToken: '' },
                         label: "{ getOspAccessToken: '' }",
-                        meaning: 'getOspAccessToken handler (new)',
+                        meaning: 'getOspAccessToken handler',
                         timeoutMs: OSP_TIMEOUT_MS,
                         match: function (d) {
                             return d.type === 'ospAccessToken';
@@ -280,7 +320,29 @@
                     }
                 ];
 
+                /* Three checks per environment, in this order. They are not independent: the
+                   reach check is what lets us read the two POST rows correctly, because a browser
+                   reports "blocked by CORS" and "host is down" as the same empty XHR error. */
+                var HTTP_CHECKS = [
+                    {
+                        style: 'reach',
+                        label: 'GET /ready',
+                        meaning: 'host reachable from the TV'
+                    },
+                    {
+                        style: 'json',
+                        label: "POST 'application/json'",
+                        meaning: 'preflighted request (needs CORS)'
+                    },
+                    {
+                        style: 'text',
+                        label: "POST 'text/plain'",
+                        meaning: 'simple request (no preflight)'
+                    }
+                ];
+
                 var rowsEl = document.getElementById('rows');
+                var sendRowsEl = document.getElementById('sendRows');
                 var verdictEl = document.getElementById('verdict');
                 var contextEl = document.getElementById('context');
                 var logEl = document.getElementById('log');
@@ -292,6 +354,15 @@
                 var startedAt = 0;
                 var runId = 0;
                 var logLines = [];
+
+                var sendRowEls = {};
+                var sendState = {};
+                var httpRunning = false;
+                /* Key events do not always reach a cross-origin iframe document, so section 2
+                   must not depend on the remote. It starts itself once, after the bridge probes
+                   settle; RIGHT only re-runs it. */
+                var httpAutoStarted = false;
+                var AUTO_START_DELAY_MS = 1500;
 
                 function clearTimers() {
                     var key;
@@ -307,47 +378,74 @@
                     return String(value);
                 }
 
-                /* authToken is a bearer credential: never print it, never store it. */
+                /* authToken and accessToken are bearer credentials: never print, never store. */
                 function describeSecret(value) {
                     if (value === undefined) return '(absent)';
                     if (value === '') return "'' (empty)";
                     return 'present (' + String(value).length + ' chars)';
                 }
 
+                function makeRow(container, key, label, meaning, store) {
+                    var tr = document.createElement('tr');
+
+                    var cmd = document.createElement('td');
+                    cmd.className = 'cmd';
+                    cmd.textContent = label;
+
+                    var st = document.createElement('td');
+                    st.className = 'state s-pending';
+                    st.textContent = 'PENDING';
+
+                    var meaningCell = document.createElement('td');
+                    meaningCell.className = 'meaning';
+                    meaningCell.textContent = meaning;
+
+                    var detail = document.createElement('td');
+                    detail.className = 'detail';
+                    detail.textContent = '-';
+
+                    tr.appendChild(cmd);
+                    tr.appendChild(st);
+                    tr.appendChild(meaningCell);
+                    tr.appendChild(detail);
+                    container.appendChild(tr);
+
+                    store[key] = { state: st, detail: detail };
+                }
+
                 function buildRows() {
                     var i;
                     for (i = 0; i < PROBES.length; i++) {
-                        var probe = PROBES[i];
-                        var tr = document.createElement('tr');
+                        makeRow(rowsEl, PROBES[i].key, PROBES[i].label, PROBES[i].meaning, rowEls);
+                    }
 
-                        var cmd = document.createElement('td');
-                        cmd.className = 'cmd';
-                        cmd.textContent = probe.label;
-
-                        var st = document.createElement('td');
-                        st.className = 'state s-pending';
-                        st.textContent = 'PENDING';
-
-                        var meaning = document.createElement('td');
-                        meaning.className = 'meaning';
-                        meaning.textContent = probe.meaning;
-
-                        var detail = document.createElement('td');
-                        detail.className = 'detail';
-                        detail.textContent = '-';
-
-                        tr.appendChild(cmd);
-                        tr.appendChild(st);
-                        tr.appendChild(meaning);
-                        tr.appendChild(detail);
-                        rowsEl.appendChild(tr);
-
-                        rowEls[probe.key] = { state: st, detail: detail };
+                    var e, c;
+                    for (e = 0; e < ENVIRONMENTS.length; e++) {
+                        for (c = 0; c < HTTP_CHECKS.length; c++) {
+                            var env = ENVIRONMENTS[e];
+                            var check = HTTP_CHECKS[c];
+                            makeRow(
+                                sendRowsEl,
+                                env.key + ':' + check.style,
+                                env.name + '  ' + check.label,
+                                check.meaning,
+                                sendRowEls
+                            );
+                            setSendRow(env.key, check.style, 'QUEUED', 's-skip', 'starts after the bridge probes');
+                        }
                     }
                 }
 
                 function setRow(key, stateText, stateClass, detailText) {
                     var row = rowEls[key];
+                    if (!row) return;
+                    row.state.className = 'state ' + stateClass;
+                    row.state.textContent = stateText;
+                    row.detail.textContent = detailText;
+                }
+
+                function setSendRow(envKey, style, stateText, stateClass, detailText) {
+                    var row = sendRowEls[envKey + ':' + style];
                     if (!row) return;
                     row.state.className = 'state ' + stateClass;
                     row.state.textContent = stateText;
@@ -367,11 +465,10 @@
 
                 function renderContext() {
                     var lines = [
-                        'in iframe:      ' + inIframe,
-                        'location:       ' + window.location.href,
-                        'origin:         ' + window.location.origin,
-                        'window.name:    ' + (bootName ? bootName : '(empty)'),
-                        'user agent:     ' + navigator.userAgent
+                        'in iframe:   ' + inIframe,
+                        'origin:      ' + window.location.origin,
+                        'window.name: ' + (bootName ? bootName : '(empty)'),
+                        'send-email:  creative_id=' + CREATIVE_ID + ' flight_id=' + FLIGHT_ID
                     ];
                     contextEl.textContent = lines.join('\n');
                 }
@@ -481,7 +578,9 @@
                         setVerdict(
                             'v-pass',
                             'PASS - all three handlers are on this TV',
-                            'ping, getSsoState and getOspAccessToken all answered.' + ospNote()
+                            'ping, getSsoState and getOspAccessToken all answered.' +
+                                ospNote() +
+                                '\nThe /send-email test starts by itself in a moment.'
                         );
                     } else if (ping || sso || osp) {
                         setVerdict(
@@ -510,6 +609,11 @@
                         );
                     }
                     console.log(LOG_PREFIX + ' verdict: ' + verdictEl.textContent);
+
+                    if (!httpAutoStarted && inIframe) {
+                        httpAutoStarted = true;
+                        setTimeout(runHttpChecks, AUTO_START_DELAY_MS);
+                    }
                 }
 
                 function run() {
@@ -567,13 +671,331 @@
                     };
                 }
 
+                /* ---------- part 2: POST /send-email from inside the iframe ---------- */
+
+                /* Samsung Account is asked for the email with `x-osp-userId: <user_id>` and
+                   `Authorization: Bearer <access_token>`, so user_id must be the OSP user id from
+                   getSsoState (uid), not the login e-mail. guid is only a fallback for firmware
+                   that leaves uid empty. */
+                function resolveUserId() {
+                    var sso = replies.ssoState;
+                    if (!sso) return { value: '', source: 'none' };
+                    if (sso.uid) return { value: String(sso.uid), source: 'uid' };
+                    if (sso.guid) return { value: String(sso.guid), source: 'guid (uid empty)' };
+                    return { value: '', source: 'none' };
+                }
+
+                function resolveToken() {
+                    var osp = replies.osp;
+                    if (osp && osp.ok && osp.accessToken) return String(osp.accessToken);
+                    return '';
+                }
+
+                /* iad_exp_group is left out on purpose: sending "b" would write an engagement
+                   count for this flight, and a transport test must not move reported numbers. */
+                function buildBody(token, userId) {
+                    return JSON.stringify({
+                        flight_id: FLIGHT_ID,
+                        creative_id: CREATIVE_ID,
+                        user_id: userId,
+                        access_token: token
+                    });
+                }
+
+                /* /ready needs no CORS to be observed: a <script> element reports load for an
+                   HTTP 200 and error for 502 or a dead host, whatever the body is. The body is
+                   not JavaScript, so a SyntaxError in the TV log here is expected and in fact
+                   confirms the response arrived. */
+                function probeReach(env, done) {
+                    var script = document.createElement('script');
+                    var settled = false;
+                    var started = Date.now();
+
+                    function settle(outcome) {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timer);
+                        script.onload = null;
+                        script.onerror = null;
+                        if (script.parentNode) script.parentNode.removeChild(script);
+                        done(outcome, Date.now() - started);
+                    }
+
+                    var timer = setTimeout(function () {
+                        settle('timeout');
+                    }, HTTP_TIMEOUT_MS);
+
+                    script.onload = function () {
+                        settle('load');
+                    };
+                    script.onerror = function () {
+                        settle('error');
+                    };
+                    script.src = env.base + '/ready?probe=' + Date.now();
+                    document.head.appendChild(script);
+                }
+
+                function postSendEmail(env, style, body, done) {
+                    var xhr = new XMLHttpRequest();
+                    var settled = false;
+                    var started = Date.now();
+
+                    function settle(outcome, status) {
+                        if (settled) return;
+                        settled = true;
+                        done(outcome, status, Date.now() - started);
+                    }
+
+                    xhr.open('POST', env.base + '/send-email', true);
+                    xhr.timeout = HTTP_TIMEOUT_MS;
+
+                    /* This single header decides the whole shape of the test. 'application/json'
+                       is not a CORS-safelisted Content-Type, so the browser must first ask the
+                       server with an OPTIONS preflight. 'text/plain;charset=UTF-8' is safelisted,
+                       so the POST leaves immediately with no preflight - and the Go handler
+                       decodes the body without ever looking at Content-Type. */
+                    xhr.setRequestHeader(
+                        'Content-Type',
+                        style === 'json' ? 'application/json' : 'text/plain;charset=UTF-8'
+                    );
+
+                    xhr.onload = function () {
+                        settle('load', xhr.status);
+                    };
+                    xhr.onerror = function () {
+                        settle('error', xhr.status);
+                    };
+                    xhr.ontimeout = function () {
+                        settle('timeout', 0);
+                    };
+                    xhr.send(body);
+                }
+
+                /* A cross-origin XHR that the browser refuses gives JavaScript status 0 and no
+                   headers - identical to a network failure. The reach result is the tie breaker:
+                   host answered + XHR empty error = the reply was withheld from us, not lost. */
+                function explainPost(env, style, outcome, status, elapsed) {
+                    var reachOk = sendState[env.key + ':reach'] === 'load';
+
+                    if (outcome === 'load') {
+                        if (status === 200) {
+                            return {
+                                text: 'OK 200 ' + elapsed + 'ms',
+                                cls: 's-ok',
+                                detail: 'accepted AND readable - the service now returns CORS headers'
+                            };
+                        }
+                        return {
+                            text: 'HTTP ' + status,
+                            cls: status >= 200 && status < 400 ? 's-sent' : 's-timeout',
+                            detail: 'readable reply, status ' + status + ' after ' + elapsed + 'ms'
+                        };
+                    }
+
+                    if (outcome === 'timeout') {
+                        return {
+                            text: 'TIMEOUT',
+                            cls: 's-timeout',
+                            detail: 'no answer in ' + HTTP_TIMEOUT_MS + ' ms'
+                        };
+                    }
+
+                    if (!reachOk) {
+                        return {
+                            text: 'UNREACHABLE',
+                            cls: 's-timeout',
+                            detail: 'host did not answer /ready either - network or environment is down'
+                        };
+                    }
+
+                    if (style === 'json') {
+                        return {
+                            text: 'BLOCKED',
+                            cls: 's-block',
+                            detail: 'OPTIONS preflight refused (405, no Access-Control-Allow-Origin) - request never sent'
+                        };
+                    }
+
+                    return {
+                        text: 'SENT, OPAQUE',
+                        cls: 's-sent',
+                        detail: 'no preflight, so the POST was delivered; reply hidden (no ACAO). Confirm server side.'
+                    };
+                }
+
+                /* One check at a time, so the table reads top to bottom and two environments are
+                   never in flight together. */
+                function runHttpChecks() {
+                    if (httpRunning) return;
+
+                    if (!inIframe) {
+                        markAllSend('NOT RUN', 's-skip', 'open this page through the container');
+                        return;
+                    }
+
+                    var token = resolveToken();
+                    var user = resolveUserId();
+
+                    if (!token) {
+                        markAllSend('SKIPPED', 's-skip', 'no OSP access token - fix row 3 first');
+                        setVerdict(
+                            'v-partial',
+                            'SEND-EMAIL SKIPPED - no OSP token',
+                            'getOspAccessToken returned no token, so there is nothing to authenticate /send-email with. Fix that row, then press RIGHT again.'
+                        );
+                        return;
+                    }
+                    if (!user.value) {
+                        markAllSend('SKIPPED', 's-skip', 'no OSP user id - getSsoState gave neither uid nor guid');
+                        setVerdict(
+                            'v-partial',
+                            'SEND-EMAIL SKIPPED - no user_id',
+                            'Samsung Account needs x-osp-userId. getSsoState returned no uid and no guid.'
+                        );
+                        return;
+                    }
+
+                    httpRunning = true;
+                    var body = buildBody(token, user.value);
+
+                    /* The body carries a bearer token, so only its shape is ever printed. */
+                    console.log(
+                        LOG_PREFIX +
+                            ' send-email body: creative_id=' +
+                            CREATIVE_ID +
+                            ' flight_id=' +
+                            FLIGHT_ID +
+                            ' user_id=' +
+                            user.source +
+                            ' access_token=' +
+                            describeSecret(token)
+                    );
+                    setVerdict(
+                        'v-pending',
+                        'POSTING /send-email...',
+                        'user_id from ' + user.source + ', access_token ' + describeSecret(token) + '. Prod is not called.'
+                    );
+
+                    var queue = [];
+                    var e, c;
+                    for (e = 0; e < ENVIRONMENTS.length; e++) {
+                        for (c = 0; c < HTTP_CHECKS.length; c++) {
+                            queue.push({ env: ENVIRONMENTS[e], check: HTTP_CHECKS[c] });
+                        }
+                    }
+
+                    var at = 0;
+                    function next() {
+                        if (at >= queue.length) {
+                            httpRunning = false;
+                            decideHttp(user);
+                            return;
+                        }
+                        var step = queue[at];
+                        at++;
+                        var env = step.env;
+                        var style = step.check.style;
+                        var stateKey = env.key + ':' + style;
+
+                        setSendRow(env.key, style, 'RUNNING', 's-pending', env.base);
+
+                        if (style === 'reach') {
+                            probeReach(env, function (outcome, elapsed) {
+                                sendState[stateKey] = outcome;
+                                if (outcome === 'load') {
+                                    setSendRow(env.key, style, 'OK ' + elapsed + 'ms', 's-ok', 'HTTP 200 from /ready');
+                                } else if (outcome === 'timeout') {
+                                    setSendRow(env.key, style, 'TIMEOUT', 's-timeout', 'no answer in ' + HTTP_TIMEOUT_MS + ' ms');
+                                } else {
+                                    setSendRow(
+                                        env.key,
+                                        style,
+                                        'FAIL',
+                                        's-timeout',
+                                        'non-200 or unreachable (pre-prod answered 502 from the office network)'
+                                    );
+                                }
+                                console.log(LOG_PREFIX + ' reach ' + env.key + ' = ' + outcome);
+                                next();
+                            });
+                            return;
+                        }
+
+                        postSendEmail(env, style, body, function (outcome, status, elapsed) {
+                            sendState[stateKey] = outcome;
+                            var view = explainPost(env, style, outcome, status, elapsed);
+                            setSendRow(env.key, style, view.text, view.cls, view.detail);
+                            pushLog(env.name + ' ' + style + ' -> ' + view.text);
+                            console.log(
+                                LOG_PREFIX +
+                                    ' send-email ' +
+                                    env.key +
+                                    ' ' +
+                                    style +
+                                    ' outcome=' +
+                                    outcome +
+                                    ' status=' +
+                                    status +
+                                    ' ' +
+                                    elapsed +
+                                    'ms'
+                            );
+                            next();
+                        });
+                    }
+
+                    next();
+                }
+
+                function markAllSend(stateText, cls, detail) {
+                    var e, c;
+                    for (e = 0; e < ENVIRONMENTS.length; e++) {
+                        for (c = 0; c < HTTP_CHECKS.length; c++) {
+                            setSendRow(ENVIRONMENTS[e].key, HTTP_CHECKS[c].style, stateText, cls, detail);
+                        }
+                    }
+                }
+
+                function decideHttp(user) {
+                    var stagingSent =
+                        sendState['staging:text'] === 'load' || sendState['staging:reach'] === 'load';
+                    var anyReadable = sendState['staging:text'] === 'load' || sendState['preprod:text'] === 'load';
+
+                    if (anyReadable) {
+                        setVerdict(
+                            'v-pass',
+                            'SEND-EMAIL REACHED AND READABLE',
+                            'The service answered and the browser let this page read the reply, so CORS is configured. Remember 200 only means "accepted for async processing".'
+                        );
+                    } else if (stagingSent) {
+                        setVerdict(
+                            'v-partial',
+                            'DELIVERED, REPLY NOT READABLE',
+                            'The simple-request POST left the TV and staging accepted it, but /send-email sends no Access-Control-Allow-Origin, so the iframe cannot read the answer. ' +
+                                'The JSON POST is refused earlier still, at the OPTIONS preflight.\n' +
+                                'Whether the OSP token worked can only be seen in the service log (user_id from ' +
+                                user.source +
+                                '): "looking for user email" = token rejected.'
+                        );
+                    } else {
+                        setVerdict(
+                            'v-fail',
+                            'SEND-EMAIL DID NOT REACH THE SERVICE',
+                            'Neither environment answered /ready from this TV. Check that the TV network can resolve and reach click2email-*.samsungads.com.'
+                        );
+                    }
+                    console.log(LOG_PREFIX + ' send-email verdict: ' + verdictEl.textContent);
+                }
+
                 window.addEventListener('message', onMessage, false);
 
                 document.addEventListener(
                     'keydown',
                     function (event) {
-                        /* 13 = OK / ENTER on the Samsung remote. */
+                        /* 13 = OK / ENTER, 39 = RIGHT on the Samsung remote. The network test is
+                           on its own key because it can make staging send a real e-mail. */
                         if (event.keyCode === 13) run();
+                        else if (event.keyCode === 39) runHttpChecks();
                     },
                     false
                 );
