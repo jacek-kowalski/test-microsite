@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=1920, height=1080, initial-scale=1" />
+        <title>Container bridge probe</title>
+        <style>
+            /* Tizen viewport is always 1920x1080, so px sizes are safe. */
+            * {
+                box-sizing: border-box;
+            }
+            html,
+            body {
+                margin: 0;
+                padding: 0;
+                width: 1920px;
+                height: 1080px;
+                background: #101215;
+                color: #e9ecef;
+                font-family: Arial, Helvetica, sans-serif;
+                overflow: hidden;
+            }
+            #app {
+                padding: 48px 72px;
+            }
+            h1 {
+                margin: 0 0 8px 0;
+                font-size: 42px;
+                font-weight: bold;
+            }
+            .sub {
+                margin: 0 0 24px 0;
+                font-size: 22px;
+                color: #9aa4ad;
+            }
+            #verdict {
+                padding: 20px 28px;
+                margin-bottom: 28px;
+                border-radius: 10px;
+                font-size: 34px;
+                font-weight: bold;
+                line-height: 1.25;
+            }
+            #verdict .why {
+                display: block;
+                margin-top: 8px;
+                font-size: 22px;
+                font-weight: normal;
+            }
+            .v-pending {
+                background: #2b3038;
+                color: #e9ecef;
+            }
+            .v-pass {
+                background: #14532d;
+                color: #d8f5e3;
+            }
+            .v-partial {
+                background: #6b4a05;
+                color: #ffeec2;
+            }
+            .v-fail {
+                background: #6b1616;
+                color: #ffd9d9;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 28px;
+            }
+            th,
+            td {
+                text-align: left;
+                padding: 12px 16px;
+                font-size: 22px;
+                border-bottom: 1px solid #23282f;
+                vertical-align: top;
+            }
+            th {
+                font-size: 18px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                color: #9aa4ad;
+            }
+            td.cmd {
+                width: 320px;
+                font-family: 'Courier New', monospace;
+                font-size: 24px;
+            }
+            td.state {
+                width: 220px;
+                font-weight: bold;
+            }
+            td.meaning {
+                width: 420px;
+                color: #9aa4ad;
+                font-size: 19px;
+            }
+            td.detail {
+                font-family: 'Courier New', monospace;
+                font-size: 19px;
+                color: #cfd6dd;
+                word-break: break-all;
+            }
+            .s-pending {
+                color: #9aa4ad;
+            }
+            .s-ok {
+                color: #4ade80;
+            }
+            .s-timeout {
+                color: #f87171;
+            }
+            .s-skip {
+                color: #9aa4ad;
+            }
+            .panels {
+                display: flex;
+            }
+            .panel {
+                flex: 1 1 50%;
+                padding-right: 40px;
+            }
+            .panel h2 {
+                margin: 0 0 10px 0;
+                font-size: 20px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                color: #9aa4ad;
+            }
+            .panel pre {
+                margin: 0;
+                padding: 16px;
+                background: #171a1f;
+                border-radius: 8px;
+                font-family: 'Courier New', monospace;
+                font-size: 18px;
+                line-height: 1.5;
+                color: #cfd6dd;
+                height: 300px;
+                overflow: hidden;
+                white-space: pre-wrap;
+                word-break: break-all;
+            }
+            .hint {
+                margin: 24px 0 0 0;
+                font-size: 20px;
+                color: #9aa4ad;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="app">
+            <h1>Container bridge probe</h1>
+            <p class="sub" id="sub">Microsite &rarr; container postMessage test</p>
+
+            <div id="verdict" class="v-pending">RUNNING&hellip;</div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Command</th>
+                        <th>Result</th>
+                        <th>Proves</th>
+                        <th>Reply</th>
+                    </tr>
+                </thead>
+                <tbody id="rows"></tbody>
+            </table>
+
+            <div class="panels">
+                <div class="panel">
+                    <h2>Page context</h2>
+                    <pre id="context"></pre>
+                </div>
+                <div class="panel">
+                    <h2>Raw messages received</h2>
+                    <pre id="log">(none yet)</pre>
+                </div>
+            </div>
+
+            <p class="hint">Press OK / ENTER on the remote to run the probes again.</p>
+        </div>
+
+        <script>
+            /* ES5 only: this page must also render in the ad management preview system. */
+            (function () {
+                'use strict';
+
+                var TIMEOUT_MS = 2000;
+                var LOG_PREFIX = '[BridgeProbe]';
+                var MAX_LOG_LINES = 8;
+
+                /* Boot data arrives in window.name as JSON. Read it before anything else. */
+                var bootName = window.name;
+                var inIframe = window.parent !== window;
+
+                var PROBES = [
+                    {
+                        key: 'ping',
+                        command: { ping: '' },
+                        label: "{ ping: '' }",
+                        meaning: 'ping handler (commit 4407c6e)',
+                        match: function (d) {
+                            return d.type === 'pong';
+                        },
+                        format: function (d) {
+                            return 'type=' + d.type + ' ping=' + d.ping;
+                        }
+                    },
+                    {
+                        key: 'ssoState',
+                        command: { getSsoState: '' },
+                        label: "{ getSsoState: '' }",
+                        meaning: 'getSsoState handler (commit 4060164)',
+                        match: function (d) {
+                            return d.type === 'ssoState';
+                        },
+                        format: function (d) {
+                            return (
+                                'bLogin=' +
+                                d.bLogin +
+                                ' id=' +
+                                describe(d.id) +
+                                ' uid=' +
+                                describe(d.uid) +
+                                ' guid=' +
+                                describe(d.guid) +
+                                ' authToken=' +
+                                describeSecret(d.authToken)
+                            );
+                        }
+                    },
+                    {
+                        key: 'getGuid',
+                        command: { getGuid: '' },
+                        label: "{ getGuid: '' }",
+                        meaning: 'control - bridge exists in ANY build',
+                        match: function (d) {
+                            return !d.type && typeof d.guid !== 'undefined';
+                        },
+                        format: function (d) {
+                            return (
+                                'model=' +
+                                describe(d.model) +
+                                ' firmcode=' +
+                                describe(d.firmcode) +
+                                ' lang=' +
+                                describe(d.lang) +
+                                ' guid=' +
+                                describe(d.guid) +
+                                ' ssoid=' +
+                                describe(d.ssoid)
+                            );
+                        }
+                    }
+                ];
+
+                var rowsEl = document.getElementById('rows');
+                var verdictEl = document.getElementById('verdict');
+                var contextEl = document.getElementById('context');
+                var logEl = document.getElementById('log');
+
+                var state = {};
+                var rowEls = {};
+                var timer = null;
+                var startedAt = 0;
+                var runId = 0;
+                var logLines = [];
+
+                function describe(value) {
+                    if (value === undefined) return '(absent)';
+                    if (value === '') return "''";
+                    return String(value);
+                }
+
+                /* authToken is a bearer credential: never print it, never store it. */
+                function describeSecret(value) {
+                    if (value === undefined) return '(absent)';
+                    if (value === '') return "'' (empty)";
+                    return 'present (' + String(value).length + ' chars)';
+                }
+
+                function buildRows() {
+                    var i;
+                    for (i = 0; i < PROBES.length; i++) {
+                        var probe = PROBES[i];
+                        var tr = document.createElement('tr');
+
+                        var cmd = document.createElement('td');
+                        cmd.className = 'cmd';
+                        cmd.textContent = probe.label;
+
+                        var st = document.createElement('td');
+                        st.className = 'state s-pending';
+                        st.textContent = 'PENDING';
+
+                        var meaning = document.createElement('td');
+                        meaning.className = 'meaning';
+                        meaning.textContent = probe.meaning;
+
+                        var detail = document.createElement('td');
+                        detail.className = 'detail';
+                        detail.textContent = '-';
+
+                        tr.appendChild(cmd);
+                        tr.appendChild(st);
+                        tr.appendChild(meaning);
+                        tr.appendChild(detail);
+                        rowsEl.appendChild(tr);
+
+                        rowEls[probe.key] = { state: st, detail: detail };
+                    }
+                }
+
+                function setRow(key, stateText, stateClass, detailText) {
+                    var row = rowEls[key];
+                    if (!row) return;
+                    row.state.className = 'state ' + stateClass;
+                    row.state.textContent = stateText;
+                    row.detail.textContent = detailText;
+                }
+
+                function setVerdict(cls, text, why) {
+                    verdictEl.className = cls;
+                    verdictEl.textContent = text;
+                    if (why) {
+                        var span = document.createElement('span');
+                        span.className = 'why';
+                        span.textContent = why;
+                        verdictEl.appendChild(span);
+                    }
+                }
+
+                function renderContext() {
+                    var lines = [
+                        'in iframe:      ' + inIframe,
+                        'location:       ' + window.location.href,
+                        'origin:         ' + window.location.origin,
+                        'window.name:    ' + (bootName ? bootName : '(empty)'),
+                        'user agent:     ' + navigator.userAgent
+                    ];
+                    contextEl.textContent = lines.join('\n');
+                }
+
+                function pushLog(line) {
+                    logLines.push(line);
+                    if (logLines.length > MAX_LOG_LINES) logLines.shift();
+                    logEl.textContent = logLines.join('\n');
+                }
+
+                function parse(data) {
+                    if (typeof data === 'string') {
+                        try {
+                            return JSON.parse(data);
+                        } catch (e) {
+                            return null;
+                        }
+                    }
+                    return data;
+                }
+
+                /* Strip the token before the raw reply reaches the screen or the TV log. */
+                function safeRaw(data) {
+                    if (!data || typeof data !== 'object') return String(data);
+                    var copy = {};
+                    var k;
+                    for (k in data) {
+                        if (Object.prototype.hasOwnProperty.call(data, k)) {
+                            copy[k] = k === 'authToken' ? '<redacted>' : data[k];
+                        }
+                    }
+                    return JSON.stringify(copy);
+                }
+
+                function onMessage(event) {
+                    var data = parse(event.data);
+                    if (!data || typeof data !== 'object') return;
+
+                    var i;
+                    for (i = 0; i < PROBES.length; i++) {
+                        var probe = PROBES[i];
+                        if (!probe.match(data)) continue;
+                        if (state[probe.key] !== 'pending') continue;
+
+                        var elapsed = Date.now() - startedAt;
+                        state[probe.key] = 'ok';
+                        setRow(probe.key, 'OK ' + elapsed + 'ms', 's-ok', probe.format(data));
+                        pushLog('+' + elapsed + 'ms ' + safeRaw(data));
+                        console.log(LOG_PREFIX + ' reply ' + probe.key + ' after ' + elapsed + 'ms');
+                        evaluate();
+                        return;
+                    }
+
+                    pushLog('unmatched ' + safeRaw(data));
+                    console.log(LOG_PREFIX + ' unmatched message from container');
+                }
+
+                function pending() {
+                    var i;
+                    var n = 0;
+                    for (i = 0; i < PROBES.length; i++) {
+                        if (state[PROBES[i].key] === 'pending') n++;
+                    }
+                    return n;
+                }
+
+                function evaluate() {
+                    if (pending() > 0) return;
+                    if (timer) {
+                        clearTimeout(timer);
+                        timer = null;
+                    }
+                    decide();
+                }
+
+                function decide() {
+                    var ping = state.ping === 'ok';
+                    var sso = state.ssoState === 'ok';
+                    var guid = state.getGuid === 'ok';
+
+                    if (ping && sso) {
+                        setVerdict(
+                            'v-pass',
+                            'PASS - both commits are on this TV',
+                            'ping and getSsoState both answered. The installed build contains 4060164 and 4407c6e.'
+                        );
+                    } else if (ping || sso) {
+                        setVerdict(
+                            'v-partial',
+                            'PARTIAL - only ' + (ping ? 'ping' : 'getSsoState') + ' answered',
+                            'One handler replied and the other did not. The installed build is between the two commits, or the missing handler failed at run time. Check the TV log.'
+                        );
+                    } else if (guid) {
+                        setVerdict(
+                            'v-fail',
+                            'OLD BUILD - changes did NOT land',
+                            'The bridge is alive (getGuid answered) but it knows neither ping nor getSsoState. The TV still runs a build from before the two commits. Reinstall the .wgt.'
+                        );
+                    } else if (!inIframe) {
+                        setVerdict(
+                            'v-fail',
+                            'NO CONTAINER - page is not in an iframe',
+                            'This page is open directly (TV browser or PC). Nothing can answer. Launch it through the container app instead.'
+                        );
+                    } else {
+                        setVerdict(
+                            'v-fail',
+                            'NO REPLY - container did not answer at all',
+                            'Not even getGuid answered. Either the parent is not the container, or the container crashed before the bridge mounted. Check the TV log for [MicrositeBridge].'
+                        );
+                    }
+                    console.log(LOG_PREFIX + ' verdict: ' + verdictEl.textContent);
+                }
+
+                function run() {
+                    runId++;
+                    var myRun = runId;
+                    startedAt = Date.now();
+                    logLines = [];
+                    logEl.textContent = '(none yet)';
+                    if (timer) clearTimeout(timer);
+
+                    var i;
+                    for (i = 0; i < PROBES.length; i++) {
+                        state[PROBES[i].key] = 'pending';
+                        setRow(PROBES[i].key, 'PENDING', 's-pending', '-');
+                    }
+
+                    setVerdict('v-pending', 'RUNNING...', 'Waiting up to ' + TIMEOUT_MS + ' ms for replies.');
+
+                    if (!inIframe) {
+                        for (i = 0; i < PROBES.length; i++) {
+                            state[PROBES[i].key] = 'skip';
+                            setRow(PROBES[i].key, 'NOT SENT', 's-skip', 'no parent frame');
+                        }
+                        decide();
+                        return;
+                    }
+
+                    /* The container only accepts messages whose source is the iframe
+                       contentWindow, so the probe must come from this top level document. */
+                    for (i = 0; i < PROBES.length; i++) {
+                        var payload = JSON.stringify(PROBES[i].command);
+                        console.log(LOG_PREFIX + ' send ' + payload);
+                        window.parent.postMessage(payload, '*');
+                    }
+
+                    timer = setTimeout(function () {
+                        if (myRun !== runId) return;
+                        var j;
+                        for (j = 0; j < PROBES.length; j++) {
+                            if (state[PROBES[j].key] === 'pending') {
+                                state[PROBES[j].key] = 'timeout';
+                                setRow(PROBES[j].key, 'TIMEOUT', 's-timeout', 'no reply in ' + TIMEOUT_MS + ' ms');
+                            }
+                        }
+                        decide();
+                    }, TIMEOUT_MS);
+                }
+
+                window.addEventListener('message', onMessage, false);
+
+                document.addEventListener(
+                    'keydown',
+                    function (event) {
+                        /* 13 = OK / ENTER on the Samsung remote. */
+                        if (event.keyCode === 13) run();
+                    },
+                    false
+                );
+
+                buildRows();
+                renderContext();
+                console.log(LOG_PREFIX + ' loaded, inIframe=' + inIframe + ' href=' + window.location.href);
+                run();
+            })();
+        </script>
+    </body>
+</html>
