@@ -141,6 +141,8 @@
                 font-size: 15px;
                 color: #cfd6dd;
                 word-break: break-all;
+                /* the container probe reports header and body evidence on a second line */
+                white-space: pre-line;
             }
             .s-pending {
                 color: #9aa4ad;
@@ -1129,11 +1131,26 @@
                         };
                     }
 
+                    /* responseType 'basic' is the interesting one: the web engine did not treat
+                       this as a cross-origin request at all, which is why a non-safelisted
+                       Content-Type raised no preflight and why the headers and body below are
+                       readable. 'cors' would instead mean the service started sending
+                       Access-Control-Allow-Origin. */
+                    var evidence =
+                        'sent Content-Type=' +
+                        describe(data.sentContentType) +
+                        ' responseType=' +
+                        describe(data.responseType) +
+                        ' headers=' +
+                        data.headerCount +
+                        ' bodyLength=' +
+                        data.bodyLength;
+
                     if (data.ok) {
                         return {
                             text: 'OK ' + data.status + ' ' + data.ms + 'ms',
                             cls: 's-ok',
-                            detail: 'container read the reply - accepted for async processing, token verdict is in the service log'
+                            detail: evidence + ' // ' + describe(data.headers)
                         };
                     }
 
@@ -1148,6 +1165,10 @@
                     else if (err === 'NoUserId') detail += ' - SSO returned neither uid nor guid';
                     else if (err === 'BadIds') detail += ' - flightId / creativeId rejected';
                     else detail += ' - the container could not get an OSP token';
+
+                    /* A non-2xx still has a readable body from the container, and for a 502 that
+                       body says whether the ingress or the app answered. */
+                    if (err === 'HttpStatus') detail += '\n' + evidence + ' // body: ' + describe(data.body);
 
                     return { text: 'FAIL', cls: 's-timeout', detail: detail };
                 }
