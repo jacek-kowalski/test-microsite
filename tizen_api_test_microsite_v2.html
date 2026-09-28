@@ -810,17 +810,27 @@
                 /* ---------- section 2: POST /send-email from inside the iframe ---------- */
 
                 /* Samsung Account is asked for the email with `x-osp-userId: <user_id>` and
-                   `Authorization: Bearer <access_token>`, so user_id must be the OSP user id from
-                   getSsoState (uid), not the login e-mail. guid is only a fallback for firmware
-                   that leaves uid empty. */
+                   `Authorization: Bearer <access_token>`, so user_id is an account identifier from
+                   getSsoState, not the login e-mail.
+
+                   guid first: "C2E Integration.md" states that guid is the user_id this service
+                   expects. uid stays only as a fallback for firmware that leaves guid empty. Note
+                   this is getSsoState().guid, not webapis.sso.getGuid() - the latter is the
+                   tracking guid and a different identifier on the same TV. */
                 function resolveUserId() {
                     var sso = replies.ssoState;
                     if (!sso) return { value: '', source: 'none' };
-                    if (sso.uid) return { value: String(sso.uid), source: 'uid' };
-                    if (sso.guid) return { value: String(sso.guid), source: 'guid (uid empty)' };
+                    if (sso.guid) return { value: String(sso.guid), source: 'guid' };
+                    if (sso.uid) return { value: String(sso.uid), source: 'uid (guid empty)' };
                     return { value: '', source: 'none' };
                 }
 
+                /* The only token source on this page. It is the reply to the getOspAccessToken
+                   bridge command, so the value was produced by window.webapis.sso.getOspAccessToken
+                   inside the container - the iframe has no webapis object of its own. The
+                   getSsoState reply also carries an authToken, but that is the Samsung Account
+                   session token and must never be used here: /send-email needs the OSP access
+                   token. */
                 function resolveToken() {
                     var osp = replies.osp;
                     if (osp && osp.ok && osp.accessToken) return String(osp.accessToken);
