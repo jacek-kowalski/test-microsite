@@ -401,7 +401,7 @@
                                 ' error=' +
                                 describe(d.error) +
                                 ' accessToken=' +
-                                describeSecret(d.accessToken)
+                                describePlainSecret(d.accessToken)
                             );
                         }
                     },
@@ -472,11 +472,20 @@
                     return String(value);
                 }
 
-                /* authToken and accessToken are bearer credentials: never print, never store. */
+                /* authToken is a bearer credential: never print, never store. */
                 function describeSecret(value) {
                     if (value === undefined) return '(absent)';
                     if (value === '') return "'' (empty)";
                     return 'present (' + String(value).length + ' chars)';
+                }
+
+                /* TEST ONLY: the OSP access token in plaintext, so it can be copied into a curl
+                   against /send-email. It reaches the screen and the TV log, and it is valid for
+                   about 48 h — treat a photo or a captured log of this page as the token itself. */
+                function describePlainSecret(value) {
+                    if (value === undefined) return '(absent)';
+                    if (value === '') return "'' (empty)";
+                    return String(value) + ' (' + String(value).length + ' chars)';
                 }
 
                 function makeRow(container, key, label, meaning, store) {
@@ -589,10 +598,11 @@
                     return data;
                 }
 
-                /* Strip credentials before the raw reply reaches the screen or the TV log. */
+                /* Strip credentials before the raw reply reaches the screen or the TV log.
+                   accessToken (OSP) is left in plaintext on purpose, see describePlainSecret. */
                 function safeRaw(data) {
                     if (!data || typeof data !== 'object') return String(data);
-                    var secret = { authToken: true, accessToken: true };
+                    var secret = { authToken: true };
                     var copy = {};
                     var k;
                     for (k in data) {
