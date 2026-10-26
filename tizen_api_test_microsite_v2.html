@@ -400,6 +400,8 @@
                                 d.ok +
                                 ' error=' +
                                 describe(d.error) +
+                                ' appId=' +
+                                describeAppId(d.appId) +
                                 ' accessToken=' +
                                 describePlainSecret(d.accessToken)
                             );
@@ -477,6 +479,15 @@
                     if (value === undefined) return '(absent)';
                     if (value === '') return "'' (empty)";
                     return 'present (' + String(value).length + ' chars)';
+                }
+
+                /* The app ID the container requested the OSP token for. Builds before the
+                   container sent it have no appId field in the reply, so absent means "unknown",
+                   not "empty". */
+                function describeAppId(value) {
+                    if (value === undefined) return '(not reported - container build too old)';
+                    if (value === '') return "'' (empty in build)";
+                    return String(value);
                 }
 
                 /* TEST ONLY: the OSP access token in plaintext, so it can be copied into a curl
@@ -678,7 +689,9 @@
                 function ospNote() {
                     if (state.osp !== 'ok') return '';
                     var ospReply = replies.osp;
-                    if (ospReply && ospReply.ok) return '\nOSP token received - credentials and sign-in both work.';
+                    var appIdLine = '\nContainer OSP app ID: ' + describeAppId(ospReply && ospReply.appId);
+                    if (ospReply && ospReply.ok)
+                        return appIdLine + '\nOSP token received - credentials and sign-in both work.';
 
                     var err = ospReply ? String(ospReply.error) : '';
                     var hint = 'OSP handler answered but no token: ' + (err || 'unknown') + '.';
@@ -687,7 +700,7 @@
                     else if (err === 'SecurityError') hint += ' The sso.partner privilege was refused for this cert.';
                     else if (err === 'NotSupportedError') hint += ' This device has no SSO support.';
                     else if (err === 'Timeout') hint += ' The OSP server did not answer within 8 s.';
-                    return '\n' + hint;
+                    return appIdLine + '\n' + hint;
                 }
 
                 function decide() {
