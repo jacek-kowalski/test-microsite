@@ -1,103 +1,866 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Kalshi API POC</title>
+<meta name="viewport" content="width=1920, height=1080, initial-scale=1">
+<title>Kalshi — NFL Regular-Season Finale</title>
 <style>
-    html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; }
-    #stage { position:absolute; width:1920px; height:1080px; transform-origin:0 0;
-             background:#111; color:#eee; font-family:monospace; box-sizing:border-box; padding:40px 60px; }
-    #status { font-size:26px; margin-bottom:20px; color:#8f8; }
-    #status.err { color:#f66; }
-    #out { font-size:20px; line-height:1.35; white-space:pre-wrap; word-break:break-all;
-           margin:0; height:940px; overflow:hidden; }
+    /* ===== Reset =====
+       Fixed 1920x1080 canvas (#stage) JS-scaled to the real panel
+       resolution (FHD/4K/8K) — see scaleStage() below. */
+    html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    /* ===== Kalshi palette (dark mode) =====
+       green  #00D991  brand / "Yes" / price up
+       red    #FF5A6A  "No" / price down
+       bg     #0A0B0D  near-black surfaces */
+    #stage {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        color: #fff;
+        transform-origin: top left;
+        /* Fallback backdrop if assets/keyart.jpg is missing */
+        background:
+            radial-gradient(1100px 700px at 30% 40%, rgba(0,217,145,.22), rgba(0,217,145,0) 70%),
+            #0A0B0D;
+    }
+
+    /* ===== Background promo key art ===== */
+    #keyart {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    #scrimLeft {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 1300px;
+        background: linear-gradient(90deg, rgba(10,11,13,.92) 0%, rgba(10,11,13,.75) 45%, rgba(10,11,13,0) 100%);
+        pointer-events: none;
+    }
+    #scrimBottom {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 380px;
+        background: linear-gradient(0deg, rgba(10,11,13,.95) 0%, rgba(10,11,13,0) 100%);
+        pointer-events: none;
+    }
+
+    /* ===== Left promo column ===== */
+    #promoCol {
+        position: absolute;
+        left: 96px;
+        top: 88px;
+        width: 1060px;
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+    }
+    .brand-row {
+        display: flex;
+        align-items: center;
+        gap: 22px;
+    }
+    .wordmark {
+        font: 700 56px/1 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        letter-spacing: -.03em;
+        color: #fff;
+    }
+    .brand-divider {
+        width: 1px;
+        height: 40px;
+        background: rgba(255,255,255,.3);
+    }
+    .league-badge {
+        padding: 9px 16px;
+        border-radius: 8px;
+        background: rgba(0,217,145,.14);
+        border: 1px solid rgba(0,217,145,.45);
+        color: #00D991;
+        font: 600 22px/1 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+    }
+    .eyebrow {
+        margin-top: 40px;
+        font: 600 26px/1 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        letter-spacing: .2em;
+        text-transform: uppercase;
+        color: #00D991;
+    }
+    .headline {
+        font: 700 84px/1.02 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        letter-spacing: -.035em;
+    }
+    .subline {
+        font: 400 32px/1.35 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        color: rgba(255,255,255,.78);
+        width: 900px;
+    }
+
+    /* ===== QR panel (bottom-left) ===== */
+    #qrPanel {
+        position: absolute;
+        left: 96px;
+        bottom: 110px;
+        display: flex;
+        align-items: center;
+        gap: 32px;
+        padding: 24px 40px 24px 24px;
+        border-radius: 20px;
+        background: rgba(255,255,255,.08);
+        -webkit-backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255,255,255,.16);
+        box-shadow: 0 22px 60px rgba(0,0,0,.5);
+    }
+    #qrCode {
+        width: 208px;
+        height: 208px;
+        padding: 12px;
+        box-sizing: content-box;
+        border-radius: 12px;
+        background: #fff;
+    }
+    #qrCode canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+    .qr-caption { display: flex; flex-direction: column; gap: 12px; width: 420px; }
+    .qr-title { font: 700 36px/1.15 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+    .qr-body { font: 400 26px/1.35 'Helvetica Neue', Helvetica, Arial, sans-serif; color: rgba(255,255,255,.75); }
+    .qr-cta {
+        align-self: flex-start;
+        margin-top: 4px;
+        padding: 12px 22px;
+        border-radius: 999px;
+        background: #00D991;
+        color: #0A0B0D;
+        font: 700 24px/1 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+
+    #legalDisclaimer {
+        position: absolute;
+        left: 96px;
+        width: 1060px;
+        bottom: 34px;
+        font: 400 16px/1.4 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        color: rgba(255,255,255,.42);
+    }
+
+    /* ===== Right market bar ===== */
+    #marketBar {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 640px;
+        padding: 52px 52px 0 52px;
+        box-sizing: border-box;
+        background: rgba(10,11,13,.86);
+        -webkit-backdrop-filter: blur(24px);
+        backdrop-filter: blur(24px);
+        border-left: 1px solid rgba(255,255,255,.1);
+    }
+    .bar-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 44px;
+        margin-bottom: 24px;
+    }
+    .bar-title { font: 700 32px/1 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+    .live-status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font: 500 20px/1 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        color: rgba(255,255,255,.6);
+    }
+    .live-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #00D991;
+        -webkit-animation: pulse 1.6s ease-in-out infinite;
+        animation: pulse 1.6s ease-in-out infinite;
+    }
+    .live-status.is-stale .live-dot { background: #FFB020; -webkit-animation: none; animation: none; }
+    .live-status.is-loading .live-dot { background: rgba(255,255,255,.4); }
+    @-webkit-keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+    #marketList { display: flex; flex-direction: column; gap: 18px; }
+
+    .market-card {
+        height: 200px;
+        padding: 22px 26px;
+        box-sizing: border-box;
+        border-radius: 16px;
+        background: #16181C;
+        border: 1px solid rgba(255,255,255,.08);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        -webkit-transition: border-color .9s ease;
+        transition: border-color .9s ease;
+    }
+    /* ===== Update animations =====
+       Old-browser-safe pattern: no keyframes, just a class toggle + CSS
+       transition. The "tick" state has transition:none so it snaps on
+       instantly; when JS removes the class ~700ms later, the base rule's
+       transition fades it back out. */
+    .market-card.flash-up,
+    .market-card.flash-down { -webkit-transition: none; transition: none; }
+    .market-card.flash-up { border-color: #00D991; }
+    .market-card.flash-down { border-color: #FF5A6A; }
+    .market-card.flash-same { -webkit-transition: none; transition: none; border-color: rgba(255,255,255,.35); }
+    .card-top {
+        display: flex;
+        justify-content: space-between;
+        font: 600 18px/1 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,.5);
+    }
+    .card-volume { letter-spacing: .04em; text-transform: none; font-weight: 500; }
+    .card-question {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 44px;
+        font: 600 26px/1 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+    .q-at { color: rgba(255,255,255,.45); font-weight: 400; }
+    /* Team logo chip — NFL club SVGs on a white disc so dark logos
+       (e.g. HOU navy) stay legible on the dark card. */
+    .team-chip {
+        width: 44px;
+        height: 44px;
+        flex: 0 0 44px;
+        border-radius: 50%;
+        background: #fff;
+        padding: 5px;
+        box-sizing: border-box;
+        box-shadow: 0 4px 12px rgba(0,0,0,.4);
+    }
+    .team-chip img { width: 100%; height: 100%; display: block; }
+    .card-bottom { display: flex; align-items: flex-end; justify-content: space-between; }
+    .card-odds { display: flex; flex-direction: column; gap: 6px; }
+    .odds-pick { font: 500 20px/1 'Helvetica Neue', Helvetica, Arial, sans-serif; color: rgba(255,255,255,.65); }
+    .odds-row { display: flex; align-items: baseline; gap: 12px; }
+    .odds-pct {
+        font: 700 54px/1 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        letter-spacing: -.03em;
+        color: #fff;
+        opacity: 1;
+        -webkit-transition: color .9s ease, opacity .9s ease;
+        transition: color .9s ease, opacity .9s ease;
+    }
+    .odds-pct.tick-up, .odds-pct.tick-down, .odds-pct.tick { -webkit-transition: none; transition: none; }
+    .odds-pct.tick-up { color: #00D991; }
+    .odds-pct.tick-down { color: #FF5A6A; }
+    .odds-pct.tick { opacity: .45; }
+    .odds-label { font: 500 20px/1 'Helvetica Neue', Helvetica, Arial, sans-serif; color: rgba(255,255,255,.5); }
+    .odds-change { font: 600 20px/1 'Helvetica Neue', Helvetica, Arial, sans-serif; color: rgba(255,255,255,.45); }
+    .odds-change.up { color: #00D991; }
+    .odds-change.down { color: #FF5A6A; }
+
+    .card-buttons { display: flex; gap: 12px; }
+    .trade-btn {
+        width: 108px;
+        height: 64px;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+    }
+    .trade-btn .btn-side { font: 600 16px/1 'Helvetica Neue', Helvetica, Arial, sans-serif; letter-spacing: .1em; text-transform: uppercase; opacity: .85; }
+    .trade-btn .btn-price { font: 700 26px/1 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+    .trade-btn.yes { background: rgba(0,217,145,.16); color: #00D991; }
+    .trade-btn.no { background: rgba(255,90,106,.16); color: #FF5A6A; }
+    .trade-btn {
+        -webkit-transition: background-color .9s ease;
+        transition: background-color .9s ease;
+    }
+    /* Price-button tick: snaps brighter on change, fades back */
+    .trade-btn.tick { -webkit-transition: none; transition: none; }
+    .trade-btn.yes.tick { background: rgba(0,217,145,.45); }
+    .trade-btn.no.tick { background: rgba(255,90,106,.45); }
+
+    /* "Updated" sweep bar along the bottom edge of the market bar header —
+       width transition only (no keyframes), restarted on every poll. */
+    #refreshBar {
+        position: absolute;
+        left: 52px;
+        right: 52px;
+        top: 112px;
+        height: 3px;
+        border-radius: 2px;
+        background: rgba(255,255,255,.08);
+        overflow: hidden;
+    }
+    #refreshBarFill {
+        width: 0;
+        height: 100%;
+        background: #00D991;
+        opacity: .7;
+    }
+    .market-card.is-closed .trade-btn { opacity: .35; }
+    .settled-label { font: 600 22px/1 'Helvetica Neue', Helvetica, Arial, sans-serif; color: rgba(255,255,255,.7); }
+
+    .bar-footnote {
+        position: absolute;
+        left: 52px;
+        right: 52px;
+        bottom: 34px;
+        font: 400 16px/1.4 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        color: rgba(255,255,255,.4);
+    }
 </style>
 </head>
 <body>
+
 <div id="stage">
-    <div id="status">Loading...</div>
-    <pre id="out"></pre>
+
+    <img id="keyart" src="assets/keyart.jpg" alt="" onerror="this.style.display='none'">
+    <div id="scrimLeft"></div>
+    <div id="scrimBottom"></div>
+
+    <div id="promoCol">
+        <div class="brand-row">
+            <div class="wordmark">Kalshi</div>
+            <div class="brand-divider"></div>
+            <div class="league-badge">NFL</div>
+        </div>
+        <div class="eyebrow">Regular-Season Finale</div>
+        <div class="headline">Every game.<br>Every outcome.<br>Trade it live.</div>
+        <div class="subline">Playoff spots are on the line. Pick Yes or No on the matchups that decide the season.</div>
+    </div>
+
+    <div id="qrPanel">
+        <div id="qrCode"></div>
+        <div class="qr-caption">
+            <div class="qr-title">Scan to trade on Kalshi</div>
+            <div class="qr-body">Open NFL markets on your phone and trade before kickoff.</div>
+            <div class="qr-cta">kalshi.com/nfl</div>
+        </div>
+    </div>
+
+    <div id="legalDisclaimer">Kalshi is a CFTC-regulated exchange. Trading involves risk of loss; eligibility restrictions apply. When you scan this QR code, Samsung may briefly log that a scan took place for measurement purposes, but this cannot be linked back to your mobile or CTV device.</div>
+
+    <div id="marketBar">
+        <div class="bar-header">
+            <div class="bar-title">Live NFL markets</div>
+            <div class="live-status is-loading" id="liveStatus">
+                <div class="live-dot"></div>
+                <div id="liveText">Connecting…</div>
+            </div>
+        </div>
+        <div id="refreshBar"><div id="refreshBarFill"></div></div>
+        <div id="marketList"></div>
+        <div class="bar-footnote">Prices in ¢ = implied chance. Refreshes every 5 s.</div>
+    </div>
+
 </div>
+
 <script>
-var STAGE_W = 1920, STAGE_H = 1080;
-var stage = document.getElementById('stage');
-function scaleStage() {
-    var scale = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
-    stage.style.transform = 'scale(' + scale + ')';
-    stage.style.left = ((window.innerWidth - STAGE_W * scale) / 2) + 'px';
-    stage.style.top = ((window.innerHeight - STAGE_H * scale) / 2) + 'px';
-}
-scaleStage();
-window.addEventListener('resize', scaleStage);
+/**
+ * Stage scaler — fixed 1920x1080 canvas uniformly scaled to fill the real
+ * screen (FHD/4K/8K, all 16:9). Copied verbatim from the other variants.
+ */
+(function () {
+    'use strict';
 
-// Default = Kalshi DEMO env: it returns CORS headers for any Origin (incl. null/file://).
-// Production (external-api.kalshi.com) 403s any browser Origin except kalshi.com,
-// so it needs a CORS proxy - pass it via ?api=<url> override.
-// WebSocket API needs signed API-key headers (401 otherwise) - not usable from a browser page.
-function getParam(name) {
-    var m = new RegExp('[?&]' + name + '=([^&]*)').exec(window.location.search);
-    return m ? decodeURIComponent(m[1]) : null;
-}
-var API_URL = getParam('api') ||
-    'https://external-api.demo.kalshi.co/trade-api/v2/markets/KXNFLGAME-26NOV19INDHOU-HOU';
-var POLL_MS = 5000;
+    var STAGE_W = 1920, STAGE_H = 1080;
+    var stage = document.getElementById('stage');
 
-var statusEl = document.getElementById('status');
-var outEl = document.getElementById('out');
-var count = 0;
+    function scaleStage() {
+        var scale = Math.min(
+            window.innerWidth / STAGE_W,
+            window.innerHeight / STAGE_H
+        );
+        stage.style.transform = 'scale(' + scale + ')';
+        stage.style.left = ((window.innerWidth - STAGE_W * scale) / 2) + 'px';
+        stage.style.top = ((window.innerHeight - STAGE_H * scale) / 2) + 'px';
+    }
 
-function setStatus(text, isErr) {
-    statusEl.textContent = text;
-    statusEl.className = isErr ? 'err' : '';
-}
+    scaleStage();
+    window.addEventListener('resize', scaleStage);
+})();
+</script>
 
-function poll() {
-    var xhr = new XMLHttpRequest();
-    var url = API_URL + (API_URL.indexOf('?') < 0 ? '?' : '&') + '_t=' + Date.now(); // cache-buster
-    xhr.open('GET', url, true);
-    xhr.timeout = 4500;
-    xhr.onload = function () {
-        var time = new Date().toLocaleTimeString();
-        if (xhr.status !== 200) {
-            setStatus('[' + time + '] HTTP ' + xhr.status + ' from ' + API_URL, true);
+<script>
+/* qrcode-generator v1.4.4 (lite) | MIT License | https://github.com/kazuhikoarase/qrcode-generator */
+var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],v={},k=function(r,t){o=function(r){for(var t=new Array(r),n=0;n<r;n+=1){t[n]=new Array(r);for(var e=0;e<r;e+=1)t[n][e]=null}return t}(u=4*n+17),p(0,0),p(u-7,0),p(0,u-7),d(),L(),y(r,t),n>=7&&B(r),null==a&&(a=A(n,e,i)),w(a,t)},p=function(r,t){for(var n=-1;n<=7;n+=1)if(!(r+n<=-1||u<=r+n))for(var e=-1;e<=7;e+=1)t+e<=-1||u<=t+e||(o[r+n][t+e]=0<=n&&n<=6&&(0==e||6==e)||0<=e&&e<=6&&(0==n||6==n)||2<=n&&n<=4&&2<=e&&e<=4)},L=function(){for(var r=8;r<u-8;r+=1)null==o[r][6]&&(o[r][6]=r%2==0);for(var t=8;t<u-8;t+=1)null==o[6][t]&&(o[6][t]=t%2==0)},d=function(){for(var r=g.getPatternPosition(n),t=0;t<r.length;t+=1)for(var e=0;e<r.length;e+=1){var u=r[t],a=r[e];if(null==o[u][a])for(var f=-2;f<=2;f+=1)for(var i=-2;i<=2;i+=1)o[u+f][a+i]=-2==f||2==f||-2==i||2==i||0==f&&0==i}},B=function(r){for(var t=g.getBCHTypeNumber(n),e=0;e<18;e+=1){var a=!r&&1==(t>>e&1);o[Math.floor(e/3)][e%3+u-8-3]=a}for(e=0;e<18;e+=1){a=!r&&1==(t>>e&1);o[e%3+u-8-3][Math.floor(e/3)]=a}},y=function(r,t){for(var n=e<<3|t,a=g.getBCHTypeInfo(n),f=0;f<15;f+=1){var i=!r&&1==(a>>f&1);f<6?o[f][8]=i:f<8?o[f+1][8]=i:o[u-15+f][8]=i}for(f=0;f<15;f+=1){i=!r&&1==(a>>f&1);f<8?o[8][u-f-1]=i:f<9?o[8][15-f-1+1]=i:o[8][15-f-1]=i}o[u-8][8]=!r},w=function(r,t){for(var n=-1,e=u-1,a=7,f=0,i=g.getMaskFunction(t),c=u-1;c>0;c-=2)for(6==c&&(c-=1);;){for(var h=0;h<2;h+=1)if(null==o[e][c-h]){var l=!1;f<r.length&&(l=1==(r[f]>>>a&1)),i(e,c-h)&&(l=!l),o[e][c-h]=l,-1==(a-=1)&&(f+=1,a=7)}if((e+=n)<0||u<=e){e-=n,n=-n;break}}},A=function(r,t,n){for(var e=h.getRSBlocks(r,t),o=l(),u=0;u<n.length;u+=1){var a=n[u];o.put(a.getMode(),4),o.put(a.getLength(),g.getLengthInBits(a.getMode(),r)),a.write(o)}var f=0;for(u=0;u<e.length;u+=1)f+=e[u].dataCount;if(o.getLengthInBits()>8*f)throw"code length overflow. ("+o.getLengthInBits()+">"+8*f+")";for(o.getLengthInBits()+4<=8*f&&o.put(0,4);o.getLengthInBits()%8!=0;)o.putBit(!1);for(;!(o.getLengthInBits()>=8*f||(o.put(236,8),o.getLengthInBits()>=8*f));)o.put(17,8);return function(r,t){for(var n=0,e=0,o=0,u=new Array(t.length),a=new Array(t.length),f=0;f<t.length;f+=1){var i=t[f].dataCount,h=t[f].totalCount-i;e=Math.max(e,i),o=Math.max(o,h),u[f]=new Array(i);for(var l=0;l<u[f].length;l+=1)u[f][l]=255&r.getBuffer()[l+n];n+=i;var s=g.getErrorCorrectPolynomial(h),v=c(u[f],s.getLength()-1).mod(s);for(a[f]=new Array(s.getLength()-1),l=0;l<a[f].length;l+=1){var k=l+v.getLength()-a[f].length;a[f][l]=k>=0?v.getAt(k):0}}var p=0;for(l=0;l<t.length;l+=1)p+=t[l].totalCount;var L=new Array(p),d=0;for(l=0;l<e;l+=1)for(f=0;f<t.length;f+=1)l<u[f].length&&(L[d]=u[f][l],d+=1);for(l=0;l<o;l+=1)for(f=0;f<t.length;f+=1)l<a[f].length&&(L[d]=a[f][l],d+=1);return L}(o,e)};return v.addData=function(r){i.push(s(r)),a=null},v.isDark=function(r,t){if(r<0||u<=r||t<0||u<=t)throw r+","+t;return o[r][t]},v.getModuleCount=function(){return u},v.make=function(){if(n<1){for(var r=1;r<40;r++){for(var t=h.getRSBlocks(r,e),o=l(),u=0;u<i.length;u++){var a=i[u];o.put(a.getMode(),4),o.put(a.getLength(),g.getLengthInBits(a.getMode(),r)),a.write(o)}var f=0;for(u=0;u<t.length;u++)f+=t[u].dataCount;if(o.getLengthInBits()<=8*f)break}n=r}k(!1,function(){for(var r=0,t=0,n=0;n<8;n+=1){k(!0,n);var e=g.getLostPoint(v);(0==n||r>e)&&(r=e,t=n)}return t}())},v};r.stringToBytes=(r.stringToBytesFuncs={default:function(r){for(var t=[],n=0;n<r.length;n+=1)t.push(255&r.charCodeAt(n));return t}}).default;var t,n,e,o,u,a=4,f={L:1,M:0,Q:3,H:2},g=(t=[[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]],n=1335,e=7973,u=function(r){for(var t=0;0!=r;)t+=1,r>>>=1;return t},(o={}).getBCHTypeInfo=function(r){for(var t=r<<10;u(t)-u(n)>=0;)t^=n<<u(t)-u(n);return 21522^(r<<10|t)},o.getBCHTypeNumber=function(r){for(var t=r<<12;u(t)-u(e)>=0;)t^=e<<u(t)-u(e);return r<<12|t},o.getPatternPosition=function(r){return t[r-1]},o.getMaskFunction=function(r){switch(r){case 0:return function(r,t){return(r+t)%2==0};case 1:return function(r,t){return r%2==0};case 2:return function(r,t){return t%3==0};case 3:return function(r,t){return(r+t)%3==0};case 4:return function(r,t){return(Math.floor(r/2)+Math.floor(t/3))%2==0};case 5:return function(r,t){return r*t%2+r*t%3==0};case 6:return function(r,t){return(r*t%2+r*t%3)%2==0};case 7:return function(r,t){return(r*t%3+(r+t)%2)%2==0};default:throw"bad maskPattern:"+r}},o.getErrorCorrectPolynomial=function(r){for(var t=c([1],0),n=0;n<r;n+=1)t=t.multiply(c([1,i.gexp(n)],0));return t},o.getLengthInBits=function(r,t){if(1<=t&&t<10)return 8;if(t<27)return 16;if(t<41)return 16;throw"type:"+t},o.getLostPoint=function(r){for(var t=r.getModuleCount(),n=0,e=0;e<t;e+=1)for(var o=0;o<t;o+=1){for(var u=0,a=r.isDark(e,o),f=-1;f<=1;f+=1)if(!(e+f<0||t<=e+f))for(var g=-1;g<=1;g+=1)o+g<0||t<=o+g||0==f&&0==g||a==r.isDark(e+f,o+g)&&(u+=1);u>5&&(n+=3+u-5)}for(e=0;e<t-1;e+=1)for(o=0;o<t-1;o+=1){var i=0;r.isDark(e,o)&&(i+=1),r.isDark(e+1,o)&&(i+=1),r.isDark(e,o+1)&&(i+=1),r.isDark(e+1,o+1)&&(i+=1),0!=i&&4!=i||(n+=3)}for(e=0;e<t;e+=1)for(o=0;o<t-6;o+=1)r.isDark(e,o)&&!r.isDark(e,o+1)&&r.isDark(e,o+2)&&r.isDark(e,o+3)&&r.isDark(e,o+4)&&!r.isDark(e,o+5)&&r.isDark(e,o+6)&&(n+=40);for(o=0;o<t;o+=1)for(e=0;e<t-6;e+=1)r.isDark(e,o)&&!r.isDark(e+1,o)&&r.isDark(e+2,o)&&r.isDark(e+3,o)&&r.isDark(e+4,o)&&!r.isDark(e+5,o)&&r.isDark(e+6,o)&&(n+=40);var c=0;for(o=0;o<t;o+=1)for(e=0;e<t;e+=1)r.isDark(e,o)&&(c+=1);return n+=Math.abs(100*c/t/t-50)/5*10},o),i=function(){for(var r=new Array(256),t=new Array(256),n=0;n<8;n+=1)r[n]=1<<n;for(n=8;n<256;n+=1)r[n]=r[n-4]^r[n-5]^r[n-6]^r[n-8];for(n=0;n<255;n+=1)t[r[n]]=n;var e={glog:function(r){if(r<1)throw"glog("+r+")";return t[r]},gexp:function(t){for(;t<0;)t+=255;for(;t>=256;)t-=255;return r[t]}};return e}();function c(r,t){if(void 0===r.length)throw r.length+"/"+t;var n=function(){for(var n=0;n<r.length&&0==r[n];)n+=1;for(var e=new Array(r.length-n+t),o=0;o<r.length-n;o+=1)e[o]=r[o+n];return e}(),e={getAt:function(r){return n[r]},getLength:function(){return n.length},multiply:function(r){for(var t=new Array(e.getLength()+r.getLength()-1),n=0;n<e.getLength();n+=1)for(var o=0;o<r.getLength();o+=1)t[n+o]^=i.gexp(i.glog(e.getAt(n))+i.glog(r.getAt(o)));return c(t,0)},mod:function(r){if(e.getLength()-r.getLength()<0)return e;for(var t=i.glog(e.getAt(0))-i.glog(r.getAt(0)),n=new Array(e.getLength()),o=0;o<e.getLength();o+=1)n[o]=e.getAt(o);for(o=0;o<r.getLength();o+=1)n[o]^=i.gexp(i.glog(r.getAt(o))+t);return c(n,0).mod(r)}};return e}var h=function(){var r=[[1,26,19],[1,26,16],[1,26,13],[1,26,9],[1,44,34],[1,44,28],[1,44,22],[1,44,16],[1,70,55],[1,70,44],[2,35,17],[2,35,13],[1,100,80],[2,50,32],[2,50,24],[4,25,9],[1,134,108],[2,67,43],[2,33,15,2,34,16],[2,33,11,2,34,12],[2,86,68],[4,43,27],[4,43,19],[4,43,15],[2,98,78],[4,49,31],[2,32,14,4,33,15],[4,39,13,1,40,14],[2,121,97],[2,60,38,2,61,39],[4,40,18,2,41,19],[4,40,14,2,41,15],[2,146,116],[3,58,36,2,59,37],[4,36,16,4,37,17],[4,36,12,4,37,13],[2,86,68,2,87,69],[4,69,43,1,70,44],[6,43,19,2,44,20],[6,43,15,2,44,16],[4,101,81],[1,80,50,4,81,51],[4,50,22,4,51,23],[3,36,12,8,37,13],[2,116,92,2,117,93],[6,58,36,2,59,37],[4,46,20,6,47,21],[7,42,14,4,43,15],[4,133,107],[8,59,37,1,60,38],[8,44,20,4,45,21],[12,33,11,4,34,12],[3,145,115,1,146,116],[4,64,40,5,65,41],[11,36,16,5,37,17],[11,36,12,5,37,13],[5,109,87,1,110,88],[5,65,41,5,66,42],[5,54,24,7,55,25],[11,36,12,7,37,13],[5,122,98,1,123,99],[7,73,45,3,74,46],[15,43,19,2,44,20],[3,45,15,13,46,16],[1,135,107,5,136,108],[10,74,46,1,75,47],[1,50,22,15,51,23],[2,42,14,17,43,15],[5,150,120,1,151,121],[9,69,43,4,70,44],[17,50,22,1,51,23],[2,42,14,19,43,15],[3,141,113,4,142,114],[3,70,44,11,71,45],[17,47,21,4,48,22],[9,39,13,16,40,14],[3,135,107,5,136,108],[3,67,41,13,68,42],[15,54,24,5,55,25],[15,43,15,10,44,16],[4,144,116,4,145,117],[17,68,42],[17,50,22,6,51,23],[19,46,16,6,47,17],[2,139,111,7,140,112],[17,74,46],[7,54,24,16,55,25],[34,37,13],[4,151,121,5,152,122],[4,75,47,14,76,48],[11,54,24,14,55,25],[16,45,15,14,46,16],[6,147,117,4,148,118],[6,73,45,14,74,46],[11,54,24,16,55,25],[30,46,16,2,47,17],[8,132,106,4,133,107],[8,75,47,13,76,48],[7,54,24,22,55,25],[22,45,15,13,46,16],[10,142,114,2,143,115],[19,74,46,4,75,47],[28,50,22,6,51,23],[33,46,16,4,47,17],[8,152,122,4,153,123],[22,73,45,3,74,46],[8,53,23,26,54,24],[12,45,15,28,46,16],[3,147,117,10,148,118],[3,73,45,23,74,46],[4,54,24,31,55,25],[11,45,15,31,46,16],[7,146,116,7,147,117],[21,73,45,7,74,46],[1,53,23,37,54,24],[19,45,15,26,46,16],[5,145,115,10,146,116],[19,75,47,10,76,48],[15,54,24,25,55,25],[23,45,15,25,46,16],[13,145,115,3,146,116],[2,74,46,29,75,47],[42,54,24,1,55,25],[23,45,15,28,46,16],[17,145,115],[10,74,46,23,75,47],[10,54,24,35,55,25],[19,45,15,35,46,16],[17,145,115,1,146,116],[14,74,46,21,75,47],[29,54,24,19,55,25],[11,45,15,46,46,16],[13,145,115,6,146,116],[14,74,46,23,75,47],[44,54,24,7,55,25],[59,46,16,1,47,17],[12,151,121,7,152,122],[12,75,47,26,76,48],[39,54,24,14,55,25],[22,45,15,41,46,16],[6,151,121,14,152,122],[6,75,47,34,76,48],[46,54,24,10,55,25],[2,45,15,64,46,16],[17,152,122,4,153,123],[29,74,46,14,75,47],[49,54,24,10,55,25],[24,45,15,46,46,16],[4,152,122,18,153,123],[13,74,46,32,75,47],[48,54,24,14,55,25],[42,45,15,32,46,16],[20,147,117,4,148,118],[40,75,47,7,76,48],[43,54,24,22,55,25],[10,45,15,67,46,16],[19,148,118,6,149,119],[18,75,47,31,76,48],[34,54,24,34,55,25],[20,45,15,61,46,16]],t=function(r,t){return{totalCount:r,dataCount:t}},n={getRSBlocks:function(n,e){var o=function(t,n){switch(n){case 1:return r[4*(t-1)+0];case 0:return r[4*(t-1)+1];case 3:return r[4*(t-1)+2];case 2:return r[4*(t-1)+3]}}(n,e);if(void 0===o)throw"bad rs block @ typeNumber:"+n+"/errorCorrectionLevel:"+e;for(var u=o.length/3,a=[],f=0;f<u;f+=1)for(var g=o[3*f+0],i=o[3*f+1],c=o[3*f+2],h=0;h<g;h+=1)a.push(t(i,c));return a}};return n}(),l=function(){var r=[],t=0,n={getBuffer:function(){return r},getAt:function(t){return 1==(r[Math.floor(t/8)]>>>7-t%8&1)},put:function(r,t){for(var e=0;e<t;e+=1)n.putBit(1==(r>>>t-e-1&1))},getLengthInBits:function(){return t},putBit:function(n){var e=Math.floor(t/8);r.length<=e&&r.push(0),n&&(r[e]|=128>>>t%8),t+=1}};return n},s=function(t){var n=a,e=r.stringToBytes(t),o={getMode:function(){return n},getLength:function(){return e.length},write:function(r){for(var t=0;t<e.length;t+=1)r.put(e[t],8)}};return o};return r}();qrcode.stringToBytesFuncs["UTF-8"]=function(r){for(var t=[],n=0;n<r.length;n++){var e=r.charCodeAt(n);e<128?t.push(e):e<2048?t.push(192|e>>6,128|63&e):e<55296||e>=57344?t.push(224|e>>12,128|e>>6&63,128|63&e):(n++,e=65536+((1023&e)<<10|1023&r.charCodeAt(n)),t.push(240|e>>18,128|e>>12&63,128|e>>6&63,128|63&e))}return t};
+</script>
+
+<script>
+/**
+ * Samsung TV Microsite — Kalshi NFL Regular-Season Finale promo
+ * Target: Tizen 10 (Chromium M130). Static page (no focus navigation);
+ * live-polls 4 Kalshi markets and wires the Samsung RETURN/EXIT contract.
+ *
+ * URL params:
+ *   qr_url / target_url — QR destination (default https://kalshi.com/hubs/nfl)
+ *   adid, isTizen, deviceCountry, deviceModel, deviceFirmware, msLibraryId
+ *                        — passthrough merged onto the QR target URL
+ *   direct_qr=0          — wrap QR in rtb.adgrx.com scan-logging relay
+ *   api_base             — Kalshi REST base URL override. Default is the
+ *                          DEMO env, which allows browser CORS. Production
+ *                          (external-api.kalshi.com) 403s non-kalshi.com
+ *                          origins, so it needs a CORS proxy/backend relay.
+ */
+(function () {
+    'use strict';
+
+    window.$SAMSUNG = window.$SAMSUNG || {};
+
+    var KeyCodes = {
+        ENTER: [13, 29443],
+        RETURN: [10009, 88],   // 88 = X key, desktop testing
+        EXIT: [10182, 45],
+        LEFT: [37],
+        RIGHT: [39],
+        UP: [38, 29460],
+        DOWN: [40, 29461]
+    };
+
+    var isTizen = /tizen/i.test(navigator.userAgent.toLowerCase());
+    var DEBUG = false;
+
+    function logEvent(msg) {
+        if (DEBUG) { console.log('[Kalshi-Microsite]', msg); }
+    }
+
+    var params = new URLSearchParams(window.location.search);
+
+    // ── Markets shown in the right bar (POC picks, all live on demo + prod).
+    // Labels use city names, matching Kalshi's own market naming. ──
+    // teams: NFL club abbreviations -> assets/teams/<ABBR>.svg (club logos
+    // from the nfl.com/schedules CDN). Two teams = "away at home" matchup.
+    var MARKETS = [
+        { ticker: 'KXNFLGAME-26NOV19INDHOU-HOU', tag: 'Thu Nov 19 · Game',  teams: ['IND', 'HOU'], question: 'IND at HOU' },
+        { ticker: 'KXNFLGAME-26NOV26KCBUF-BUF',  tag: 'Thanksgiving · Game', teams: ['KC', 'BUF'],  question: 'KC at BUF' },
+        { ticker: 'KXNFLPLAYOFF-27-KC',          tag: 'Playoff race',        teams: ['KC'],         question: 'Chiefs make the playoffs?' },
+        { ticker: 'KXSB-27-BUF',                 tag: 'Championship',        teams: ['BUF'],        question: 'Bills win the 2027 title?' }
+    ];
+
+    var API_BASE = params.get('api_base') || 'https://external-api.demo.kalshi.co/trade-api/v2';
+    var POLL_MS = 5000;
+    var MAX_BACKOFF_MS = 60000;
+
+    // ── QR code (same contract as the other variants) ──
+    function buildQrTargetUrl() {
+        var rawUrl = params.get('qr_url') || params.get('target_url') || 'https://kalshi.com/hubs/nfl';
+        try {
+            var u = new URL(rawUrl);
+            var q = new URLSearchParams(u.search);
+            ['adid', 'isTizen', 'deviceCountry', 'deviceModel', 'deviceFirmware', 'msLibraryId'].forEach(function (k) {
+                if (params.has(k)) { q.set(k, params.get(k)); }
+            });
+            u.search = q.toString();
+            return u.toString();
+        } catch (e) {
+            return rawUrl;
+        }
+    }
+
+    function parseAdid(adid) {
+        var parts = (adid || '').split('-');
+        return { campaignId: parts[0] || '0', flightId: parts[1] || '0', creativeId: parts[2] || '0' };
+    }
+
+    function renderQrCode(container) {
+        try {
+            var qrUrl = buildQrTargetUrl();
+            if (params.get('direct_qr') === '0') {
+                var a = parseAdid(params.get('adid'));
+                qrUrl = 'https://rtb.adgrx.com/scans?flight_id=' + a.flightId +
+                    '&creative_id=' + a.creativeId +
+                    '&target_url=' + encodeURIComponent(qrUrl);
+            }
+            var q = qrcode(0, 'L');
+            q.addData(qrUrl);
+            q.make();
+            var m = q.getModuleCount();
+            var s = 8;
+            var c = document.createElement('canvas');
+            c.width = m * s;
+            c.height = m * s;
+            var ctx = c.getContext('2d');
+            var x, y;
+            for (y = 0; y < m; y++) {
+                for (x = 0; x < m; x++) {
+                    ctx.fillStyle = q.isDark(y, x) ? '#0A0B0D' : '#fff';
+                    ctx.fillRect(x * s, y * s, s, s);
+                }
+            }
+            container.innerHTML = '';
+            container.appendChild(c);
+        } catch (e) {
+            logEvent('QR render failed: ' + e);
+        }
+    }
+
+    // ── Market cards ──
+    var cards = {}; // ticker -> { root, els..., lastPct }
+
+    function el(tag, cls, text) {
+        var n = document.createElement(tag);
+        if (cls) { n.className = cls; }
+        if (text !== undefined) { n.textContent = text; }
+        return n;
+    }
+
+    function buildCards() {
+        var list = document.getElementById('marketList');
+        MARKETS.forEach(function (cfg) {
+            var root = el('div', 'market-card');
+            var top = el('div', 'card-top');
+            top.appendChild(el('div', '', cfg.tag));
+            var vol = el('div', 'card-volume', '');
+            top.appendChild(vol);
+
+            var question = el('div', 'card-question');
+            if (cfg.teams.length === 2) {
+                // "[logo] IND at [logo] HOU"
+                var parts = cfg.question.split(' at ');
+                question.appendChild(teamChip(cfg.teams[0]));
+                question.appendChild(el('span', '', parts[0]));
+                question.appendChild(el('span', 'q-at', 'at'));
+                question.appendChild(teamChip(cfg.teams[1]));
+                question.appendChild(el('span', '', parts[1]));
+            } else {
+                question.appendChild(teamChip(cfg.teams[0]));
+                question.appendChild(el('span', '', cfg.question));
+            }
+
+            var bottom = el('div', 'card-bottom');
+            var odds = el('div', 'card-odds');
+            var pick = el('div', 'odds-pick', '');
+            var row = el('div', 'odds-row');
+            var pct = el('div', 'odds-pct', '--%');
+            var label = el('div', 'odds-label', 'chance');
+            var change = el('div', 'odds-change', '');
+            row.appendChild(pct);
+            row.appendChild(label);
+            row.appendChild(change);
+            odds.appendChild(pick);
+            odds.appendChild(row);
+
+            var buttons = el('div', 'card-buttons');
+            var yes = el('div', 'trade-btn yes');
+            yes.appendChild(el('div', 'btn-side', 'Yes'));
+            var yesPrice = el('div', 'btn-price', '--');
+            yes.appendChild(yesPrice);
+            var no = el('div', 'trade-btn no');
+            no.appendChild(el('div', 'btn-side', 'No'));
+            var noPrice = el('div', 'btn-price', '--');
+            no.appendChild(noPrice);
+            buttons.appendChild(yes);
+            buttons.appendChild(no);
+
+            bottom.appendChild(odds);
+            bottom.appendChild(buttons);
+
+            root.appendChild(top);
+            root.appendChild(question);
+            root.appendChild(bottom);
+            list.appendChild(root);
+
+            cards[cfg.ticker] = {
+                root: root, vol: vol, pick: pick, pct: pct, label: label,
+                change: change, yes: yes, no: no, yesPrice: yesPrice, noPrice: noPrice,
+                lastPct: null, lastYes: null, lastNo: null
+            };
+        });
+    }
+
+    function teamChip(abbr) {
+        var chip = el('div', 'team-chip');
+        var img = document.createElement('img');
+        img.src = 'assets/teams/' + abbr + '.svg';
+        img.alt = abbr;
+        img.onerror = function () { chip.style.display = 'none'; };
+        chip.appendChild(img);
+        return chip;
+    }
+
+    // Old-browser-safe "tick" animation: add a class whose rule has
+    // transition:none (snaps on), then remove it after a delay so the base
+    // rule's transition fades it back. No keyframes, no rAF, no transforms.
+    var TICK_MS = 700;
+    function tick(node, cls) {
+        if (node._tickTimer) { clearTimeout(node._tickTimer); }
+        var base = node.className.replace(/\s*\b(tick-up|tick-down|tick|flash-up|flash-down|flash-same)\b/g, '');
+        node.className = base + ' ' + cls;
+        node._tickTimer = setTimeout(function () {
+            node.className = base;
+            node._tickTimer = null;
+        }, TICK_MS);
+    }
+
+    // Header progress bar: snap to 0 width, then transition to 100% over
+    // the poll interval — a visible "next refresh" countdown.
+    var refreshFill = document.getElementById('refreshBarFill');
+    function restartRefreshBar(ms) {
+        refreshFill.style.webkitTransition = 'none';
+        refreshFill.style.transition = 'none';
+        refreshFill.style.width = '0';
+        void refreshFill.offsetWidth; // force reflow so the reset applies
+        var t = 'width ' + ms + 'ms linear';
+        refreshFill.style.webkitTransition = t;
+        refreshFill.style.transition = t;
+        refreshFill.style.width = '100%';
+    }
+
+    function num(v) {
+        var n = parseFloat(v);
+        return isNaN(n) ? 0 : n;
+    }
+
+    function cents(v) {
+        var c = Math.round(num(v) * 100);
+        return (c <= 0 || c >= 100) ? '--' : c + '¢';
+    }
+
+    function formatVolume(v) {
+        var n = Math.round(num(v));
+        if (n >= 1000000) { return '$' + (n / 1000000).toFixed(1) + 'M vol'; }
+        if (n >= 1000) { return '$' + (n / 1000).toFixed(0) + 'K vol'; }
+        return '$' + n + ' vol';
+    }
+
+    // Implied chance: last traded price; fall back to bid/ask midpoint if
+    // the market hasn't traded yet.
+    function impliedPct(m) {
+        var last = num(m.last_price_dollars);
+        if (last > 0) { return Math.round(last * 100); }
+        var bid = num(m.yes_bid_dollars), ask = num(m.yes_ask_dollars);
+        if (ask > 0) { return Math.round((bid + ask) / 2 * 100); }
+        return null;
+    }
+
+    function updateCard(m) {
+        var c = cards[m.ticker];
+        if (!c) { return; }
+
+        c.vol.textContent = formatVolume(m.volume_fp);
+        c.pick.textContent = 'Yes · ' + (m.yes_sub_title || '');
+
+        var closed = m.status !== 'active';
+        if (closed) {
+            if (c.root._tickTimer) { clearTimeout(c.root._tickTimer); c.root._tickTimer = null; }
+            c.root.className = 'market-card is-closed';
+            if (m.result === 'yes' || m.result === 'no') {
+                c.pct.textContent = m.result === 'yes' ? '100%' : '0%';
+                c.label.textContent = 'settled ' + m.result.toUpperCase();
+            } else {
+                c.label.textContent = 'trading closed';
+            }
+            c.change.textContent = '';
+            c.yesPrice.textContent = '--';
+            c.noPrice.textContent = '--';
             return;
         }
-        try {
-            var data = JSON.parse(xhr.responseText);
-            count++;
-            outEl.textContent = JSON.stringify(data, null, 2);
-            setStatus('[' + time + '] OK - update #' + count + ' - polling every ' + (POLL_MS / 1000) + 's');
-        } catch (e) {
-            setStatus('[' + time + '] JSON parse error: ' + e.message, true);
+
+        var pct = impliedPct(m);
+        var yesTxt = cents(m.yes_ask_dollars);
+        var noTxt = cents(m.no_ask_dollars);
+        c.pct.textContent = pct === null ? '--%' : pct + '%';
+        c.label.textContent = 'chance';
+        c.yesPrice.textContent = yesTxt;
+        c.noPrice.textContent = noTxt;
+
+        // Yes/No buttons pulse only when their own price changed
+        if (c.lastYes !== null && yesTxt !== c.lastYes) { tick(c.yes, 'tick'); }
+        if (c.lastNo !== null && noTxt !== c.lastNo) { tick(c.no, 'tick'); }
+        c.lastYes = yesTxt;
+        c.lastNo = noTxt;
+
+        // Change vs previous-day price (Kalshi's previous_price_dollars)
+        var prev = num(m.previous_price_dollars);
+        var diff = (pct !== null && prev > 0) ? pct - Math.round(prev * 100) : 0;
+        if (diff > 0) {
+            c.change.className = 'odds-change up';
+            c.change.textContent = '▲ ' + diff;
+        } else if (diff < 0) {
+            c.change.className = 'odds-change down';
+            c.change.textContent = '▼ ' + (-diff);
+        } else {
+            c.change.className = 'odds-change';
+            c.change.textContent = '';
         }
-    };
-    xhr.onerror = function () {
-        setStatus('[' + new Date().toLocaleTimeString() + '] Network/CORS error (status ' + xhr.status + ') - ' + API_URL, true);
-    };
-    xhr.ontimeout = function () {
-        setStatus('[' + new Date().toLocaleTimeString() + '] Request timed out', true);
-    };
-    xhr.send();
-}
 
-poll();
-setInterval(poll, POLL_MS);
-
-// Samsung ad-player contract + desktop testing
-var KeyCodes = {
-    RETURN: [10009, 88],
-    EXIT:   [10182, 45]
-};
-function onKeyDown(e) {
-    var k = e.keyCode;
-    if (KeyCodes.RETURN.indexOf(k) >= 0 || KeyCodes.EXIT.indexOf(k) >= 0) {
-        if (window.$SAMSUNG && window.$SAMSUNG.closeMicrosite) window.$SAMSUNG.closeMicrosite();
+        // Every successful poll gives visible feedback:
+        //  - price moved: card border + % flash green/red
+        //  - unchanged:   subtle white border blink + % dim-and-return
+        c.root.className = 'market-card';
+        if (c.lastPct !== null && pct !== null && pct !== c.lastPct) {
+            var up = pct > c.lastPct;
+            tick(c.root, up ? 'flash-up' : 'flash-down');
+            tick(c.pct, up ? 'tick-up' : 'tick-down');
+        } else if (c.lastPct !== null) {
+            tick(c.root, 'flash-same');
+            tick(c.pct, 'tick');
+        }
+        c.lastPct = pct;
     }
-}
-document.addEventListener('keydown', onKeyDown);
-window.$SAMSUNG = window.$SAMSUNG || {};
-window.$SAMSUNG.onKeyDown = onKeyDown;
-window.$SAMSUNG.onLoad = function () {};
+
+    // ── Live status indicator ──
+    var liveStatus = document.getElementById('liveStatus');
+    var liveText = document.getElementById('liveText');
+
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+    function setLive(ok) {
+        if (ok) {
+            var d = new Date();
+            liveStatus.className = 'live-status';
+            liveText.textContent = 'Live · ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        } else {
+            liveStatus.className = 'live-status is-stale';
+            liveText.textContent = 'Reconnecting…';
+        }
+    }
+
+    // ── Polling: chained setTimeout (no overlapping requests), jitter,
+    // exponential backoff on errors, paused while the page is hidden. ──
+    var pollTimer = null;
+    var failures = 0;
+    var stopped = false;
+
+    function scheduleNext() {
+        if (stopped || document.hidden) { return; }
+        var delay = failures > 0
+            ? Math.min(POLL_MS * Math.pow(2, failures), MAX_BACKOFF_MS)
+            : POLL_MS;
+        delay += Math.round(Math.random() * 1000 - 500);
+        restartRefreshBar(delay);
+        pollTimer = setTimeout(poll, delay);
+    }
+
+    function poll() {
+        pollTimer = null;
+        var tickers = MARKETS.map(function (m) { return m.ticker; }).join(',');
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', API_BASE + '/markets?tickers=' + encodeURIComponent(tickers), true);
+        xhr.timeout = 4500;
+        xhr.onload = function () {
+            if (xhr.status === 200) {
+                try {
+                    var data = JSON.parse(xhr.responseText);
+                    (data.markets || []).forEach(updateCard);
+                    failures = 0;
+                    setLive(true);
+                } catch (e) {
+                    failures++;
+                    setLive(false);
+                    logEvent('Parse error: ' + e);
+                }
+            } else {
+                failures++;
+                setLive(false);
+                logEvent('HTTP ' + xhr.status);
+            }
+            scheduleNext();
+        };
+        xhr.onerror = xhr.ontimeout = function () {
+            failures++;
+            setLive(false);
+            logEvent('Network/CORS error or timeout');
+            scheduleNext();
+        };
+        xhr.send();
+    }
+
+    function stopPolling() {
+        stopped = true;
+        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    }
+
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+            if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+        } else if (!stopped && !pollTimer) {
+            poll();
+        }
+    });
+
+    // ── Samsung contract ──
+    function closeMicrosite(exitRoute) {
+        logEvent('Closing microsite: ' + exitRoute);
+        stopPolling();
+        if (isTizen) {
+            setTimeout(function () {
+                window.parent.postMessage('{"close":""}', '*');
+            }, 1000);
+        }
+    }
+
+    function onKeyDown(event) {
+        var keyCode = event.keyCode;
+        if (KeyCodes.EXIT.indexOf(keyCode) >= 0) {
+            closeMicrosite('remoteExitButton');
+            return;
+        }
+        if (KeyCodes.RETURN.indexOf(keyCode) >= 0) {
+            closeMicrosite('remoteReturnButton');
+            return;
+        }
+    }
+
+    var loaded = false;
+    function onLoad() {
+        if (loaded) { return; }
+        loaded = true;
+        logEvent('Microsite loading. Platform: ' + (isTizen ? 'Tizen' : 'Browser'));
+
+        renderQrCode(document.getElementById('qrCode'));
+        buildCards();
+        poll();
+
+        if (isTizen) {
+            setTimeout(function () {
+                window.parent.postMessage('{"registerKey":"Return"}', '*');
+            }, 2000);
+        }
+    }
+
+    window.$SAMSUNG.onLoad = onLoad;
+    window.$SAMSUNG.onKeyDown = onKeyDown;
+    window.$SAMSUNG.closeMicrosite = closeMicrosite;
+
+    document.addEventListener('keydown', onKeyDown);
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        onLoad();
+    } else {
+        document.addEventListener('DOMContentLoaded', onLoad);
+    }
+})();
 </script>
+
 </body>
 </html>
