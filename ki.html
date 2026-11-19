@@ -480,6 +480,22 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
         if (DEBUG) { console.log('[Kalshi-Microsite]', msg); }
     }
 
+    // ── API logging — always on (independent of DEBUG) for TV testing.
+    // Plain strings only: Tizen remote-inspector consoles often render
+    // objects as "[object Object]". Guarded for engines without console. ──
+    function ts() {
+        var d = new Date();
+        function p(n, w) { n = '' + n; while (n.length < w) { n = '0' + n; } return n; }
+        return p(d.getHours(), 2) + ':' + p(d.getMinutes(), 2) + ':' + p(d.getSeconds(), 2) + '.' + p(d.getMilliseconds(), 3);
+    }
+    function apiLog(msg) {
+        if (window.console && console.log) { console.log('[Kalshi-API ' + ts() + '] ' + msg); }
+    }
+    function apiError(msg) {
+        if (window.console && console.error) { console.error('[Kalshi-API ' + ts() + '] ERROR ' + msg); }
+        else { apiLog('ERROR ' + msg); }
+    }
+
     // ES5 query-string parsing. URLSearchParams / URL are NOT available on
     // Tizen 3.0 (Chromium 47; URLSearchParams landed in Chromium 49) and
     // throwing here kills the whole script. Minimal get/has-compatible shim.
@@ -612,7 +628,7 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
             container.innerHTML = '';
             container.appendChild(c);
         } catch (e) {
-            logEvent('QR render failed: ' + e);
+            apiError('QR render failed: ' + (e && e.message ? e.message : e));
         }
     }
 
@@ -855,39 +871,86 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
         pollTimer = setTimeout(poll, delay);
     }
 
+    var pollCount = 0;
+
+    function nextDelayNote() {
+        // Mirrors scheduleNext() backoff, for the log line only (no jitter)
+        var d = failures > 0 ? Math.min(POLL_MS * Math.pow(2, failures), MAX_BACKOFF_MS) : POLL_MS;
+        return 'retry in ~' + Math.round(d / 1000) + 's (consecutive failures: ' + failures + ')';
+    }
+
+    function fmtPrice(v) {
+        var n = parseFloat(v);
+        return isNaN(n) ? '-' : Math.round(n * 100) + 'c';
+    }
+
     function poll() {
         pollTimer = null;
+        pollCount++;
+        var reqNo = pollCount;
         var tickers = MARKETS.map(function (m) { return m.ticker; }).join(',');
+        var url = API_BASE + '/markets?tickers=' + encodeURIComponent(tickers);
+        var started = new Date().getTime();
         var xhr = new XMLHttpRequest();
-        xhr.open('GET', API_BASE + '/markets?tickers=' + encodeURIComponent(tickers), true);
+        xhr.open('GET', url, true);
         xhr.timeout = 4500;
         xhr.onload = function () {
+            var ms = new Date().getTime() - started;
             if (xhr.status === 200) {
                 try {
                     var data = JSON.parse(xhr.responseText);
-                    (data.markets || []).forEach(function (m) {
+                    var markets = data.markets || [];
+                    markets.forEach(function (m) {
                         updateCard(SIMULATE ? simulateMarket(m) : m);
                     });
                     failures = 0;
                     setLive(true);
+
+                    apiLog('#' + reqNo + ' OK HTTP 200 in ' + ms + 'ms, ' +
+                        xhr.responseText.length + ' bytes, ' + markets.length + '/' + MARKETS.length +
+                        ' markets' + (SIMULATE ? ' (SIMULATED prices)' : ''));
+                    markets.forEach(function (m) {
+                        apiLog('   ' + m.ticker + ' [' + m.status + '] last=' + fmtPrice(m.last_price_dollars) +
+                            ' yesBid=' + fmtPrice(m.yes_bid_dollars) + ' yesAsk=' + fmtPrice(m.yes_ask_dollars) +
+                            ' noAsk=' + fmtPrice(m.no_ask_dollars) + ' vol=' + m.volume_fp);
+                    });
+                    // Requested tickers the API didn't return (typo, delisted, wrong env)
+                    var got = {};
+                    markets.forEach(function (m) { got[m.ticker] = true; });
+                    MARKETS.forEach(function (cfg) {
+                        if (!got[cfg.ticker]) { apiError('#' + reqNo + ' ticker missing from response: ' + cfg.ticker); }
+                    });
                 } catch (e) {
                     failures++;
                     setLive(false);
-                    logEvent('Parse error: ' + e);
+                    apiError('#' + reqNo + ' JSON parse/render failed after ' + ms + 'ms: ' + (e && e.message ? e.message : e) +
+                        ' | body starts: ' + (xhr.responseText || '').slice(0, 200) + ' | ' + nextDelayNote());
                 }
             } else {
                 failures++;
                 setLive(false);
-                logEvent('HTTP ' + xhr.status);
+                apiError('#' + reqNo + ' HTTP ' + xhr.status + ' ' + (xhr.statusText || '') + ' after ' + ms + 'ms' +
+                    ' | url: ' + url + ' | body: ' + (xhr.responseText || '(empty)').slice(0, 300) + ' | ' + nextDelayNote());
             }
             scheduleNext();
         };
-        xhr.onerror = xhr.ontimeout = function () {
+        xhr.onerror = function () {
+            var ms = new Date().getTime() - started;
             failures++;
             setLive(false);
-            logEvent('Network/CORS error or timeout');
+            // status 0 + onerror = request blocked before a response was readable:
+            // CORS rejection, DNS/TLS failure or no network.
+            apiError('#' + reqNo + ' network error (status ' + xhr.status + ') after ' + ms +
+                'ms - likely CORS block, DNS/TLS failure or offline | url: ' + url + ' | ' + nextDelayNote());
             scheduleNext();
         };
+        xhr.ontimeout = function () {
+            failures++;
+            setLive(false);
+            apiError('#' + reqNo + ' timeout after ' + xhr.timeout + 'ms | url: ' + url + ' | ' + nextDelayNote());
+            scheduleNext();
+        };
+        apiLog('#' + reqNo + ' GET ' + url);
         xhr.send();
     }
 
@@ -932,6 +995,9 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
         if (loaded) { return; }
         loaded = true;
         logEvent('Microsite loading. Platform: ' + (isTizen ? 'Tizen' : 'Browser'));
+        apiLog('Start - API base: ' + API_BASE + ', poll every ' + (POLL_MS / 1000) + 's, ' +
+            MARKETS.length + ' markets' + (SIMULATE ? ', SIMULATE mode ON' : '') +
+            ' | UA: ' + navigator.userAgent);
 
         renderQrCode(document.getElementById('qrCode'));
         buildCards();
