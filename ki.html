@@ -41,7 +41,8 @@
     /* ===== Background promo key art ===== */
     #keyart {
         position: absolute;
-        inset: 0;
+        left: 0;
+        top: 0;
         width: 100%;
         height: 100%;
         object-fit: cover;
@@ -73,12 +74,10 @@
         width: 1060px;
         display: flex;
         flex-direction: column;
-        gap: 28px;
     }
     .brand-row {
         display: flex;
         align-items: center;
-        gap: 22px;
     }
     .wordmark {
         font: 700 56px/1 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -101,7 +100,6 @@
         text-transform: uppercase;
     }
     .eyebrow {
-        margin-top: 40px;
         font: 600 26px/1 'Helvetica Neue', Helvetica, Arial, sans-serif;
         letter-spacing: .2em;
         text-transform: uppercase;
@@ -124,7 +122,6 @@
         bottom: 110px;
         display: flex;
         align-items: center;
-        gap: 32px;
         padding: 24px 40px 24px 24px;
         border-radius: 20px;
         background: rgba(255,255,255,.08);
@@ -142,12 +139,11 @@
         background: #fff;
     }
     #qrCode canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
-    .qr-caption { display: flex; flex-direction: column; gap: 12px; width: 420px; }
+    .qr-caption { display: flex; flex-direction: column; width: 420px; }
     .qr-title { font: 700 36px/1.15 'Helvetica Neue', Helvetica, Arial, sans-serif; }
     .qr-body { font: 400 26px/1.35 'Helvetica Neue', Helvetica, Arial, sans-serif; color: rgba(255,255,255,.75); }
     .qr-cta {
         align-self: flex-start;
-        margin-top: 4px;
         padding: 12px 22px;
         border-radius: 999px;
         background: #00D991;
@@ -189,7 +185,6 @@
     .live-status {
         display: flex;
         align-items: center;
-        gap: 10px;
         font: 500 20px/1 'Helvetica Neue', Helvetica, Arial, sans-serif;
         color: rgba(255,255,255,.6);
     }
@@ -206,7 +201,7 @@
     @-webkit-keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 
-    #marketList { display: flex; flex-direction: column; gap: 18px; }
+    #marketList { display: flex; flex-direction: column; }
 
     .market-card {
         height: 200px;
@@ -243,7 +238,6 @@
     .card-question {
         display: flex;
         align-items: center;
-        gap: 10px;
         height: 44px;
         font: 600 26px/1 'Helvetica Neue', Helvetica, Arial, sans-serif;
         white-space: nowrap;
@@ -264,9 +258,9 @@
     }
     .team-chip img { width: 100%; height: 100%; display: block; }
     .card-bottom { display: flex; align-items: flex-end; justify-content: space-between; }
-    .card-odds { display: flex; flex-direction: column; gap: 6px; }
+    .card-odds { display: flex; flex-direction: column; }
     .odds-pick { font: 500 20px/1 'Helvetica Neue', Helvetica, Arial, sans-serif; color: rgba(255,255,255,.65); }
-    .odds-row { display: flex; align-items: baseline; gap: 12px; }
+    .odds-row { display: flex; align-items: baseline; }
     .odds-pct {
         font: 700 54px/1 'Helvetica Neue', Helvetica, Arial, sans-serif;
         letter-spacing: -.03em;
@@ -284,7 +278,7 @@
     .odds-change.up { color: #00D991; }
     .odds-change.down { color: #FF5A6A; }
 
-    .card-buttons { display: flex; gap: 12px; }
+    .card-buttons { display: flex; }
     .trade-btn {
         width: 108px;
         height: 64px;
@@ -293,7 +287,6 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 6px;
     }
     .trade-btn .btn-side { font: 600 16px/1 'Helvetica Neue', Helvetica, Arial, sans-serif; letter-spacing: .1em; text-transform: uppercase; opacity: .85; }
     .trade-btn .btn-price { font: 700 26px/1 'Helvetica Neue', Helvetica, Arial, sans-serif; }
@@ -337,6 +330,39 @@
         font: 400 16px/1.4 'Helvetica Neue', Helvetica, Arial, sans-serif;
         color: rgba(255,255,255,.4);
     }
+
+    /* ===== Spacing without flex `gap` =====
+       flex gap needs Chromium 84+; Tizen 3.0 is Chromium 47 and ignores it,
+       which collapsed all spacing. Same visual result via margins:
+       vertical stacks use margin-top on every child but the first,
+       horizontal rows use margin-left. */
+    #promoCol > * + * { margin-top: 28px; }
+    #promoCol > .eyebrow { margin-top: 68px; }      /* 28 gap + 40 extra (was margin-top:40px) */
+    .brand-row > * + * { margin-left: 22px; }
+    #qrPanel > * + * { margin-left: 32px; }
+    .qr-caption > * + * { margin-top: 12px; }
+    .qr-caption > .qr-cta { margin-top: 16px; }     /* 12 gap + 4 extra */
+    .live-status > * + * { margin-left: 10px; }
+    #marketList > * + * { margin-top: 18px; }
+    .card-question > * + * { margin-left: 10px; }
+    .card-odds > * + * { margin-top: 6px; }
+    .odds-row > * + * { margin-left: 12px; }
+    .card-buttons > * + * { margin-left: 12px; }
+    .trade-btn > * + * { margin-top: 6px; }
+
+    /* ===== Old-WebKit flexbox prefixes ===== */
+    #promoCol, .brand-row, #qrPanel, .qr-caption, .bar-header, .live-status,
+    #marketList, .market-card, .card-top, .card-question, .card-bottom,
+    .card-odds, .odds-row, .card-buttons, .trade-btn { display: -webkit-flex; display: flex; }
+    #promoCol, .qr-caption, #marketList, .market-card, .card-odds, .trade-btn { -webkit-flex-direction: column; flex-direction: column; }
+    .brand-row, #qrPanel, .bar-header, .live-status, .card-question, .trade-btn { -webkit-align-items: center; align-items: center; }
+    .odds-row { -webkit-align-items: baseline; align-items: baseline; }
+    .card-bottom { -webkit-align-items: flex-end; align-items: flex-end; }
+    .bar-header, .card-top, .card-bottom, .market-card { -webkit-justify-content: space-between; justify-content: space-between; }
+    .trade-btn { -webkit-justify-content: center; justify-content: center; }
+    .qr-cta { -webkit-align-self: flex-start; align-self: flex-start; }
+    .team-chip { -webkit-flex: 0 0 44px; flex: 0 0 44px; }
+    #qrCode, .live-dot { -webkit-flex-shrink: 0; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -429,6 +455,8 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
  *                          DEMO env, which allows browser CORS. Production
  *                          (external-api.kalshi.com) 403s non-kalshi.com
  *                          origins, so it needs a CORS proxy/backend relay.
+ *   simulate=1           — demo mode: random-walk on top of real prices so
+ *                          update animations are visible when no game is live
  */
 (function () {
     'use strict';
@@ -452,18 +480,77 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
         if (DEBUG) { console.log('[Kalshi-Microsite]', msg); }
     }
 
-    var params = new URLSearchParams(window.location.search);
+    // ES5 query-string parsing. URLSearchParams / URL are NOT available on
+    // Tizen 3.0 (Chromium 47; URLSearchParams landed in Chromium 49) and
+    // throwing here kills the whole script. Minimal get/has-compatible shim.
+    function parseQuery(search) {
+        var map = {};
+        var s = (search || '').replace(/^\?/, '');
+        if (!s) { return map; }
+        var pairs = s.split('&');
+        for (var i = 0; i < pairs.length; i++) {
+            if (!pairs[i]) { continue; }
+            var idx = pairs[i].indexOf('=');
+            var k = idx < 0 ? pairs[i] : pairs[i].slice(0, idx);
+            var v = idx < 0 ? '' : pairs[i].slice(idx + 1);
+            try {
+                k = decodeURIComponent(k.replace(/\+/g, ' '));
+                v = decodeURIComponent(v.replace(/\+/g, ' '));
+            } catch (e) { /* keep raw on malformed escapes */ }
+            if (!map.hasOwnProperty(k)) { map[k] = v; }
+        }
+        return map;
+    }
+
+    var query = parseQuery(window.location.search);
+    var params = {
+        get: function (k) { return query.hasOwnProperty(k) ? query[k] : null; },
+        has: function (k) { return query.hasOwnProperty(k); }
+    };
 
     // ── Markets shown in the right bar (POC picks, all live on demo + prod).
-    // Labels use city names, matching Kalshi's own market naming. ──
+    // Chosen for volatility: all from the same game (IND at HOU, Thu Nov 19)
+    // and priced near 50¢, where in-game prices swing hardest. Futures
+    // (playoffs, title) and later games barely move between polls.
     // teams: NFL club abbreviations -> assets/teams/<ABBR>.svg (club logos
-    // from the nfl.com/schedules CDN). Two teams = "away at home" matchup.
+    // from the nfl.com/schedules CDN). A question containing " at " renders
+    // as "[logo] AWAY at [logo] HOME"; otherwise logos then question text.
+    // pick: short label for the Yes side (API yes_sub_title can be too long).
     var MARKETS = [
-        { ticker: 'KXNFLGAME-26NOV19INDHOU-HOU', tag: 'Thu Nov 19 · Game',  teams: ['IND', 'HOU'], question: 'IND at HOU' },
-        { ticker: 'KXNFLGAME-26NOV26KCBUF-BUF',  tag: 'Thanksgiving · Game', teams: ['KC', 'BUF'],  question: 'KC at BUF' },
-        { ticker: 'KXNFLPLAYOFF-27-KC',          tag: 'Playoff race',        teams: ['KC'],         question: 'Chiefs make the playoffs?' },
-        { ticker: 'KXSB-27-BUF',                 tag: 'Championship',        teams: ['BUF'],        question: 'Bills win the 2027 title?' }
+        { ticker: 'KXNFLGAME-26NOV19INDHOU-HOU',     tag: 'Thu Nov 19 · Winner', teams: ['IND', 'HOU'], question: 'IND at HOU',            pick: 'Houston wins' },
+        { ticker: 'KXNFLSPREAD-26NOV19INDHOU-HOU11', tag: 'Thu Nov 19 · Spread', teams: ['HOU'],        question: 'Texans win by 11+?',    pick: 'HOU -10.5' },
+        { ticker: 'KXNFLSPREAD-26NOV19INDHOU-HOU14', tag: 'Thu Nov 19 · Spread', teams: ['HOU'],        question: 'Texans win by 14+?',    pick: 'HOU -13.5' },
+        { ticker: 'KXNFLTOTAL-26NOV19INDHOU-45',     tag: 'Thu Nov 19 · Total',  teams: ['IND', 'HOU'], question: 'Over 44.5 points?',     pick: 'Over 44.5' }
     ];
+
+    // ?simulate=1 — demo-only: adds a random walk on top of the real polled
+    // prices so update animations can be shown when no game is live.
+    // Off by default; status line reads "Simulated" so it can't be
+    // mistaken for real data.
+    var SIMULATE = params.get('simulate') === '1';
+    var simOffsets = {};
+
+    function simulateMarket(m) {
+        var o = simOffsets[m.ticker] || 0;
+        o += Math.round(Math.random() * 6 - 3) / 100; // ±3¢ per poll
+        if (o > .2) { o = .2; } else if (o < -.2) { o = -.2; }
+        simOffsets[m.ticker] = o;
+        function shift(v) {
+            var n = parseFloat(v);
+            if (isNaN(n) || n <= 0) { return v; }
+            return Math.max(.01, Math.min(.99, n + o)).toFixed(4);
+        }
+        function shiftNo(v) {
+            var n = parseFloat(v);
+            if (isNaN(n) || n <= 0) { return v; }
+            return Math.max(.01, Math.min(.99, n - o)).toFixed(4);
+        }
+        m.last_price_dollars = shift(m.last_price_dollars);
+        m.yes_bid_dollars = shift(m.yes_bid_dollars);
+        m.yes_ask_dollars = shift(m.yes_ask_dollars);
+        m.no_ask_dollars = shiftNo(m.no_ask_dollars);
+        return m;
+    }
 
     var API_BASE = params.get('api_base') || 'https://external-api.demo.kalshi.co/trade-api/v2';
     var POLL_MS = 5000;
@@ -472,17 +559,24 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
     // ── QR code (same contract as the other variants) ──
     function buildQrTargetUrl() {
         var rawUrl = params.get('qr_url') || params.get('target_url') || 'https://kalshi.com/hubs/nfl';
-        try {
-            var u = new URL(rawUrl);
-            var q = new URLSearchParams(u.search);
-            ['adid', 'isTizen', 'deviceCountry', 'deviceModel', 'deviceFirmware', 'msLibraryId'].forEach(function (k) {
-                if (params.has(k)) { q.set(k, params.get(k)); }
-            });
-            u.search = q.toString();
-            return u.toString();
-        } catch (e) {
-            return rawUrl;
+        // Merge passthrough params onto rawUrl's query string (ES5 — no URL()).
+        var hashIdx = rawUrl.indexOf('#');
+        var hash = hashIdx < 0 ? '' : rawUrl.slice(hashIdx);
+        var noHash = hashIdx < 0 ? rawUrl : rawUrl.slice(0, hashIdx);
+        var qIdx = noHash.indexOf('?');
+        var base = qIdx < 0 ? noHash : noHash.slice(0, qIdx);
+        var existing = parseQuery(qIdx < 0 ? '' : noHash.slice(qIdx + 1));
+        var keys = ['adid', 'isTizen', 'deviceCountry', 'deviceModel', 'deviceFirmware', 'msLibraryId'];
+        for (var i = 0; i < keys.length; i++) {
+            if (params.has(keys[i])) { existing[keys[i]] = params.get(keys[i]); }
         }
+        var parts = [];
+        for (var k in existing) {
+            if (existing.hasOwnProperty(k)) {
+                parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(existing[k]));
+            }
+        }
+        return base + (parts.length ? '?' + parts.join('&') : '') + hash;
     }
 
     function parseAdid(adid) {
@@ -542,16 +636,17 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
             top.appendChild(vol);
 
             var question = el('div', 'card-question');
-            if (cfg.teams.length === 2) {
+            var parts = cfg.question.split(' at ');
+            if (cfg.teams.length === 2 && parts.length === 2) {
                 // "[logo] IND at [logo] HOU"
-                var parts = cfg.question.split(' at ');
                 question.appendChild(teamChip(cfg.teams[0]));
                 question.appendChild(el('span', '', parts[0]));
                 question.appendChild(el('span', 'q-at', 'at'));
                 question.appendChild(teamChip(cfg.teams[1]));
                 question.appendChild(el('span', '', parts[1]));
             } else {
-                question.appendChild(teamChip(cfg.teams[0]));
+                // "[logo][logo] Over 44.5 points?"
+                cfg.teams.forEach(function (t) { question.appendChild(teamChip(t)); });
                 question.appendChild(el('span', '', cfg.question));
             }
 
@@ -591,7 +686,7 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
             cards[cfg.ticker] = {
                 root: root, vol: vol, pick: pick, pct: pct, label: label,
                 change: change, yes: yes, no: no, yesPrice: yesPrice, noPrice: noPrice,
-                lastPct: null, lastYes: null, lastNo: null
+                lastPct: null, lastYes: null, lastNo: null, pickLabel: cfg.pick
             };
         });
     }
@@ -666,7 +761,7 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
         if (!c) { return; }
 
         c.vol.textContent = formatVolume(m.volume_fp);
-        c.pick.textContent = 'Yes · ' + (m.yes_sub_title || '');
+        c.pick.textContent = 'Yes · ' + (c.pickLabel || m.yes_sub_title || '');
 
         var closed = m.status !== 'active';
         if (closed) {
@@ -737,7 +832,7 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
         if (ok) {
             var d = new Date();
             liveStatus.className = 'live-status';
-            liveText.textContent = 'Live · ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+            liveText.textContent = (SIMULATE ? 'Simulated · ' : 'Live · ') + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
         } else {
             liveStatus.className = 'live-status is-stale';
             liveText.textContent = 'Reconnecting…';
@@ -770,7 +865,9 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
             if (xhr.status === 200) {
                 try {
                     var data = JSON.parse(xhr.responseText);
-                    (data.markets || []).forEach(updateCard);
+                    (data.markets || []).forEach(function (m) {
+                        updateCard(SIMULATE ? simulateMarket(m) : m);
+                    });
                     failures = 0;
                     setLive(true);
                 } catch (e) {
