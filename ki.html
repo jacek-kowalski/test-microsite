@@ -533,10 +533,12 @@ var qrcode=function(){var r=function(r,t){var n=r,e=f[t],o=null,u=0,a=null,i=[],
     // as "[logo] AWAY at [logo] HOME"; otherwise logos then question text.
     // pick: short label for the Yes side (API yes_sub_title can be too long).
     var MARKETS = [
-        { ticker: 'KXNFLGAME-26NOV19INDHOU-HOU',     tag: 'Thu Nov 19 · Winner', teams: ['IND', 'HOU'], question: 'IND at HOU',            pick: 'Houston wins' },
-        { ticker: 'KXNFLSPREAD-26NOV19INDHOU-HOU11', tag: 'Thu Nov 19 · Spread', teams: ['HOU'],        question: 'Texans win by 11+?',    pick: 'HOU -10.5' },
-        { ticker: 'KXNFLSPREAD-26NOV19INDHOU-HOU14', tag: 'Thu Nov 19 · Spread', teams: ['HOU'],        question: 'Texans win by 14+?',    pick: 'HOU -13.5' },
-        { ticker: 'KXNFLTOTAL-26NOV19INDHOU-45',     tag: 'Thu Nov 19 · Total',  teams: ['IND', 'HOU'], question: 'Over 44.5 points?',     pick: 'Over 44.5' }
+        // NOTE: game markets settle after the final whistle and then show
+        // "settled YES/NO" (100%/0%). Swap tickers for upcoming games.
+        { ticker: 'KXNFLGAME-26NOV25GBLAR-LAR',  tag: 'Wed Nov 25 · Winner',  teams: ['GB', 'LA'],  question: 'GB at LAR', pick: 'Rams win' },
+        { ticker: 'KXNFLGAME-26NOV26CHIDET-DET', tag: 'Thanksgiving · Winner', teams: ['CHI', 'DET'], question: 'CHI at DET', pick: 'Lions win' },
+        { ticker: 'KXNFLGAME-26NOV26PHIDAL-DAL', tag: 'Thanksgiving · Winner', teams: ['PHI', 'DAL'], question: 'PHI at DAL', pick: 'Cowboys win' },
+        { ticker: 'KXNFLGAME-26NOV26KCBUF-BUF',  tag: 'Thanksgiving · Winner', teams: ['KC', 'BUF'],  question: 'KC at BUF',  pick: 'Bills win' }
     ];
 
     // ?simulate=1 — demo-only: adds a random walk on top of the real polled
